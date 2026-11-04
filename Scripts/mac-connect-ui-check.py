@@ -16,7 +16,7 @@ for call in ['client.connect(to: mac)', 'client.connectRemotely(mac.macID)',
              'client.pairHome(code: code)',
              'client.pairTyped(code: code, address: address, overlay: false)',
              'client.cancelPairing()', 'client.forget(id)',
-             '.onDisappear { client.disconnect() }']:
+             '.onDisappear { releasePicture(); client.disconnect() }']:
     assert call in s, call
 assert 'client.savedMacs.remove' not in s, 'Removal must retain shared persistence rules'
 print('Connect UI: single owner/window, confirmed links, explicit paste and shared actions passed')
