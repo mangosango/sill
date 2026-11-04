@@ -13,7 +13,7 @@ for guard in ['client.textScaleOffersOff', 'client.textScaleSelectable',
               'LockedMac.title', 'LockedMac.detail', 'client.settings.displayed']:
     assert guard in source, guard
 assert 'may forward received clipboard text to its devices' in source
-assert 'remote Command-V will use the remote clipboard' in source
+assert 'Remote Command-V uses the remote clipboard; it does not transfer local text.' in source
 assert 'NSPasteboard' not in source
 assert 'send(.changeSettings' not in source
 print('viewer-controls: release ordering, shared policies, clipboard distinction and warning passed')
