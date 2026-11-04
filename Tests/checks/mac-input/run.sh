@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
+if [ "${1:-}" = --mutants ]; then
+  exec python3 Tests/checks/mac-input/mutants.py
+fi
 out=.build/checks/mac-input
 mkdir -p "$out"
 swiftc -swift-version 5 -emit-library -emit-module -module-name StreamProtocol Sources/StreamProtocol/*.swift -o "$out/libStreamProtocol.dylib" -emit-module-path "$out/StreamProtocol.swiftmodule"
