@@ -1,7 +1,14 @@
 import Foundation
+import Combine
 import Network
 import QuartzCore
+#if os(macOS)
+import AppKit
+typealias ClientImage = NSImage
+#else
 import UIKit
+typealias ClientImage = UIImage
+#endif
 import StreamProtocol
 
 /// A Mac on the connect screen: one the network browser lists, one seen only over peer-to-peer
@@ -165,7 +172,7 @@ final class StreamClient: ObservableObject {
     @Published var macGroups: [String: String] = [:]
     /// Last-stream preview pictures for saved Macs (ConnectionList), stored in Caches/SillPreviews: those
     /// shown, which is none while the list shows (the files stay: `syncPreviews`).
-    @Published var macPreviews: [String: UIImage] = [:]
+    @Published var macPreviews: [String: ClientImage] = [:]
     /// The style the shown pictures follow (`syncPreviews`); nil before the first look at launch.
     var previewStyle: ConnectionList.Style?
     /// This connection's latest kind 18: who the Mac is and how to reach it from afar. Verified
@@ -263,8 +270,8 @@ final class StreamClient: ObservableObject {
             }
         }
     }
-    @Published var thumbnails: [UInt32: UIImage] = [:] // by window ID
-    @Published var icons: [String: UIImage] = [:]      // by bundle ID
+    @Published var thumbnails: [UInt32: ClientImage] = [:] // by window ID
+    @Published var icons: [String: ClientImage] = [:]      // by bundle ID
     @Published var apps: [AppInfo] = []                // installed apps, for "All apps"
 
     // The Mac's streaming settings (kinds 16 and 17; see the Host settings section below and
@@ -319,7 +326,9 @@ final class StreamClient: ObservableObject {
     /// What each waiting completion opened, for the console ("menus: File (2) in 41 ms, 24 items").
     private var menuAsked: [Int: (title: String, id: String, at: Double)] = [:]
     /// The harness's Mac menus (`-SillMacMenu`): what the mock Mac answers its fetches and choices with.
+    #if !os(macOS)
     var mockMenus: MockCatalog.MacMenus?
+    #endif
     /// `-SillMenuPress` has run on this client.
     private var menuPressArgumentDone = false
     #endif
@@ -426,7 +435,7 @@ final class StreamClient: ObservableObject {
 
     /// The Mac's current cursor image (hotspot and size in points), for the pointer sprite, whichever
     /// pointer it shows. Not @Published for the same reason as `presence`. Main thread.
-    struct CursorShape { let image: UIImage; let hotspot: CGPoint; let size: CGSize }
+    struct CursorShape { let image: ClientImage; let hotspot: CGPoint; let size: CGSize }
     var cursorShape: CursorShape? { didSet { onCursorShapeChange?(cursorShape) } }
     var onCursorShapeChange: ((CursorShape?) -> Void)?
 
@@ -509,6 +518,13 @@ final class StreamClient: ObservableObject {
         onParameterSets = { ps in view.apply(ps) }
         onFrame = { data, isKey in view.enqueue(data, isKeyframe: isKey) }
         onBlank = { view.blank() }
+        #if os(macOS)
+        onPointerChange = { [weak view] point in view?.setPointer(point) }
+        onCursorShapeChange = { [weak view] shape in view?.setCursorShape(shape) }
+        view.setCursorShape(cursorShape)
+        view.onVideoSizeForPointer = { [weak self] _ in self?.pointerFrameChanged() }
+        renderPointer()
+        #endif
         return view
     }()
     /// On `queue`: the picture removed until the next keyframe (a locked Mac, docs/locked-mac-plan.md).
@@ -589,8 +605,14 @@ final class StreamClient: ObservableObject {
     /// `startBrowsing` has run: this client looks for Macs (the harness's mock clients never do).
     private var browsing = false
     /// The app is not in the background (UIApplication's notifications): the automatic reconnect dials
-    /// a listed row, and a failed browser is made again, only then (issue #69). Main thread.
+    /// a listed row, and a failed browser is made again, only then (issue #69). On macOS only
+    /// sleep pauses this work, not key focus. Main thread.
+    #if os(macOS)
+    private(set) var appInForeground = true
+    private var clientLifecycle: ClientLifecycle?
+    #else
     private(set) var appInForeground = UIApplication.shared.applicationState != .background
+    #endif
     #if DEBUG
     /// `-SillBrowserFail N`: each of the first N network browsers is reported failed with
     /// kDNSServiceErr_DefunctConnection (-65569) half a second after it starts, as iOS reports a
@@ -928,7 +950,11 @@ final class StreamClient: ObservableObject {
     var clipboardChipShownFor: TimeInterval = 0
     var clipboardChipCountingSince: TimeInterval?
     var clipboardChipAnnounced = false
+    #if os(macOS)
+    var clipboardAppActive = NSApplication.shared.isActive
+    #else
     var clipboardAppActive = UIApplication.shared.applicationState == .active
+    #endif
     /// A Paste waiting for the pong that says the Mac has read it (ClipboardPolicy.receiptLength), and
     /// its timeout (`receiptWait`).
     var clipboardReceipt: ClipboardReceipt?
@@ -1057,6 +1083,24 @@ final class StreamClient: ObservableObject {
         // Back from the background: the pings stopped while the app was suspended, which is no loss;
         // and the browsers, whose connection to mDNSResponder iOS may have made defunct meanwhile, are
         // made again (`cameForward`, issue #69).
+        #if os(macOS)
+        clientLifecycle = ClientLifecycle(window: { [weak self] in self?.displayView.window }) { [weak self] awake, visible, woke in
+            guard let self else { return }
+            self.appInForeground = awake
+            if woke {
+                self.resetLiveness()
+                self.cameForward()
+            }
+            if visible {
+                let view = self.displayView
+                self.queue.async { view.checkLayer("as its window became visible or woke") }
+                self.considerKeyframeAsk()
+            } else {
+                self.keyframeRecovery.leftForeground()
+                self.keyframeAskWork?.cancel(); self.keyframeAskWork = nil
+            }
+        }
+        #else
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
             self?.resetLiveness()
             self?.cameForward()
@@ -1064,6 +1108,7 @@ final class StreamClient: ObservableObject {
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             self?.appInForeground = false
         }
+        #endif
         // The clipboard's chip looks when Sill becomes active (StreamClient+Clipboard).
         observeClipboardActivation()
         sound.setMuted(soundMuted)
@@ -1077,6 +1122,7 @@ final class StreamClient: ObservableObject {
     /// Sill (or the picture's own window: each Sill window has its own client) going away and coming
     /// back. From init.
     private func observePictureActivation() {
+        #if !os(macOS)
         let center = NotificationCenter.default
         // A scene's notification counts only for this session's window (any, before it has one).
         let ours: (Notification) -> Bool = { [weak self] note in
@@ -1100,13 +1146,18 @@ final class StreamClient: ObservableObject {
                 self.keyframeAskWork?.cancel(); self.keyframeAskWork = nil
             }
         }
+        #endif
     }
 
     /// Whether the picture can be shown now: its window's scene is in the foreground and active, or,
-    /// while it is in no window, Sill is active. Main thread.
+    /// while it is in no window, Sill is active. On macOS: awake and visible, not key focus. Main thread.
     private var pictureActive: Bool {
+        #if os(macOS)
+        return clientLifecycle?.pictureVisible ?? false
+        #else
         if let scene = displayView.window?.windowScene { return scene.activationState == .foregroundActive }
         return UIApplication.shared.applicationState == .active
+        #endif
     }
 
     /// Asks the Mac for one keyframe (kind 44) when KeyframeRecovery says one is owed and due, and looks
@@ -3441,7 +3492,11 @@ final class StreamClient: ObservableObject {
                         #if DEBUG
                         print("tiles: decoded the picture of \(macID) from its \(kept.frame.count / 1024) KB keyframe in \(ms) ms, \(picture.width)×\(picture.height)")
                         #endif
-                        self.savePreview(UIImage(cgImage: picture, scale: ConnectionList.previewScale, orientation: .up), for: macID)
+                        #if os(macOS)
+                        self.savePreview(ClientPlatform.previewImage(picture, scale: ConnectionList.previewScale), for: macID)
+                        #else
+                        self.savePreview(ClientImage(cgImage: picture, scale: ConnectionList.previewScale, orientation: .up), for: macID)
+                        #endif
                     case .failure(let why):
                         #if DEBUG
                         print("tiles: no picture of \(macID) kept: \(why) (\(ms) ms); the old one stays")
@@ -4216,8 +4271,10 @@ final class StreamClient: ObservableObject {
                     // their top level now and again whenever it changes (a Mac from before them skips it).
                     self.subscribeToMenus()
                     #if DEBUG
+                    #if !os(macOS)
                     InputScript.sessionListed(self)   // -SillInputScript: its clock starts here
                     SettingsScript.sessionListed(self)   // -SillSettingsScript: and this one's
+                    #endif
                     if let test = UserDefaults.standard.string(forKey: "SillMoveHomeTest") { self.beginMoveHomeTest(test) }
                     #endif
                 }
@@ -4287,17 +4344,17 @@ final class StreamClient: ObservableObject {
             }
         case .thumbnail:
             guard let (windowID, jpeg) = ImageBlob.decodeThumbnail(data),
-                  let image = UIImage(data: jpeg) else { return }
+                  let image = ClientImage(data: jpeg) else { return }
             DispatchQueue.main.async { self.thumbnails[windowID] = image }
         case .appIcon:
             guard let (bundleID, png) = ImageBlob.decodeIcon(data),
-                  let image = UIImage(data: png) else { return }
+                  let image = ClientImage(data: png) else { return }
             DispatchQueue.main.async { self.icons[bundleID] = image }
         case .appList:
             guard let apps = Wire.decode([AppInfo].self, from: data) else { return }
             DispatchQueue.main.async { self.apps = apps }
         case .cursorShape:
-            guard let (hotspot, size, png) = CursorShapeBlob.decode(data), let image = UIImage(data: png) else { return }
+            guard let (hotspot, size, png) = CursorShapeBlob.decode(data), let image = ClientImage(data: png) else { return }
             DispatchQueue.main.async { self.cursorShape = CursorShape(image: image, hotspot: hotspot, size: size) }
         case .macPointer:
             receivePointer(data)
@@ -4731,7 +4788,9 @@ extension StreamClient {
             print("menubar: \(title) was built from version \(builtVersion); version \(current) has none")
             #endif
             completion(.message(MacMenuState.changedNote))
+            #if !os(macOS)
             MacMenuHub.shared.menusChanged(self)
+            #endif
             return
         }
         #if DEBUG
@@ -4761,7 +4820,9 @@ extension StreamClient {
             send(.fetchMenu, payload: Wire.encode(request))
             scheduleMenusExpiry()
             #if DEBUG
+            #if !os(macOS)
             if connection == nil { mockAnswer(request) }
+            #endif
             #endif
         case .joined:
             menuCompletions[key] = completion
@@ -4783,7 +4844,9 @@ extension StreamClient {
             sendAfterInput(.pressMenuItem, Wire.encode(request))
             #if DEBUG
             print("menus: chose \(row.title) (\(request.id ?? ""))")
+            #if !os(macOS)
             if connection == nil { mockAnswer(request) }
+            #endif
             #endif
         case .refused(let refusal)?:
             menuRefused(refusal)
@@ -4802,9 +4865,13 @@ extension StreamClient {
             let what = count == 0 && menus.app == nil ? "none" : "\(menus.app ?? "?"), \(count) menu\(count == 1 ? "" : "s")"
             print("menus: \(what) (version \(menus.version.map(String.init) ?? "?"))"
                   + (menus.stale ? ", stale" : "") + (menus.note.map { ": \($0)" } ?? ""))
+            #if !os(macOS)
             pressFromLaunchArgument()
             #endif
+            #endif
+            #if !os(macOS)
             MacMenuHub.shared.menusChanged(self)
+            #endif
         }
         if let refusal { menuRefused(refusal) }
         scheduleMenusExpiry()
@@ -4813,8 +4880,12 @@ extension StreamClient {
     /// A choice not made: the warning haptic (iPhones; an iPad has no Taptic Engine) and VoiceOver's
     /// announcement. Nothing on screen: the Mac's picture says what happened (plan's Q9).
     private func menuRefused(_ refusal: MacMenuState.Refusal) {
+        #if os(macOS)
+        ClientPlatform.announce(refusal.announcement, view: displayView)
+        #else
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
         UIAccessibility.post(notification: .announcement, argument: refusal.announcement)
+        #endif
         #if DEBUG
         print(refusal.byMac ? "menus: the Mac refused \(refusal.title) (\(refusal.id)): \(refusal.note)"
                             : "menus: not sent: \(refusal.title) (\(refusal.id)): \(refusal.note)")
@@ -4874,7 +4945,9 @@ extension StreamClient {
         #if DEBUG
         menuAsked = [:]
         #endif
+        #if !os(macOS)
         MacMenuHub.shared.menusChanged(self)
+        #endif
     }
 
     /// A move handed the session to its new connection (`finishMove`): what waits settles, and the
@@ -4890,7 +4963,7 @@ extension StreamClient {
         return menuToken
     }
 
-    #if DEBUG
+    #if DEBUG && !os(macOS)
     /// The harness's menus: the mock Mac's top level, as if the Mac had sent it on this connection.
     func showMockMenus(_ mock: MockCatalog.MacMenus) {
         mockMenus = mock

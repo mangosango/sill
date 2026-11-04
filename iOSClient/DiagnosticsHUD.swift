@@ -1,5 +1,9 @@
 import Combine
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 import StreamProtocol
 
 // MARK: - Client stats reporter
@@ -45,14 +49,30 @@ final class ClientStatsReporter: ObservableObject {
 
     /// "iPad (iPad14,1)": the user-visible name is generic on iOS 16+ without an entitlement, so the
     /// hardware identifier is what tells an iPad Mini from a simulator in the Mac's log.
+    static var localClientName: String {
+        #if os(macOS)
+        return Host.current().localizedName ?? "Mac"
+        #else
+        return UIDevice.current.name
+        #endif
+    }
+
     static let deviceName: String = {
-        let name = UIDevice.current.name
+        let name = localClientName
         let id = hardwareIdentifier
         return id.isEmpty ? name : "\(name) (\(id))"
     }()
 
-    /// "iPad14,1", or "iPad16,6 simulator": also what a pairing request gives as the model.
+    /// Also what a pairing request gives as the model. Native Mac model reading adapted from
+    /// Alexander Deutsch's PR #128; uname's machine on a Mac is only its architecture.
     static var hardwareIdentifier: String {
+        #if os(macOS)
+        var size = 0
+        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return "" }
+        var model = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("hw.model", &model, &size, nil, 0) == 0 else { return "" }
+        return String(cString: model)
+        #else
         if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
             return "\(simulated) simulator"
         }
@@ -61,12 +81,13 @@ final class ClientStatsReporter: ObservableObject {
         return withUnsafeBytes(of: &info.machine) { raw in
             String(decoding: raw.prefix(while: { $0 != 0 }), as: UTF8.self)
         }
+        #endif
     }
 }
 
 // MARK: - HUD (DEBUG only)
 
-#if DEBUG
+#if DEBUG && !os(macOS)
 /// The on-screen readout: "58 fps · age 9/24 ms · rtt 7/80 ms · 3024×1898 · sound 62" in a
 /// translucent capsule at the display view's top-right; each pair is the last second's median/max, "–"
 /// for a second without a sample, and the last is how far the Mac's sound trailed the picture, while it

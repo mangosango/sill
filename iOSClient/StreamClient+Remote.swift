@@ -1,7 +1,11 @@
 import Foundation
 import Network
 import CryptoKit
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 import StreamProtocol
 
 // Remote access on the device (docs/remote-access-plan.md §7): pairing, saved Macs, remote dials,
@@ -143,7 +147,13 @@ enum RemoteCopy {
 
 extension StreamClient {
     /// "iPhone" or "iPad", for copy about this device.
-    static var deviceWord: String { UIDevice.current.userInterfaceIdiom == .phone ? "iPhone" : "iPad" }
+    static var deviceWord: String {
+        #if os(macOS)
+        return "Mac"
+        #else
+        return UIDevice.current.userInterfaceIdiom == .phone ? "iPhone" : "iPad"
+        #endif
+    }
 
     /// DEBUG builds keep 127.0.0.1 for the simulator's tests against a host on this Mac.
     static var keepsLoopback: Bool {
@@ -244,12 +254,12 @@ extension StreamClient {
         if !savedMacsSeeded, let dir {
             for stale in plan.delete { try? FileManager.default.removeItem(at: dir.appendingPathComponent(stale)) }
         }
-        var shown: [String: UIImage] = [:]
+        var shown: [String: ClientImage] = [:]
         if let dir {
             for macID in plan.show {
                 guard let name = ConnectionList.previewFileName(for: macID),
                       let data = try? Data(contentsOf: dir.appendingPathComponent(name)),
-                      let image = UIImage(data: data) else { continue }
+                      let image = ClientImage(data: data) else { continue }
                 shown[macID] = image
             }
         }
@@ -262,12 +272,29 @@ extension StreamClient {
 
     /// A session's end with tiles on, once its last keyframe is decoded (`tearDown`, `takePreview`): the
     /// tile shows it at once (`macPreviews`, published, so a connect screen already showing picks it
-    /// up) and its JPEG is written. The file has complete protection: unreadable while the device is
+    /// up) and its JPEG is written. On iOS the file has complete protection: unreadable while the device is
     /// locked. Sill reads it only at launch and when tiles come back, and writes it only for a session
     /// that ended in a window in front, a second at most later, so all happen while the device is unlocked.
-    func savePreview(_ image: UIImage, for macID: String) {
+    /// macOS has no equivalent file-protection flag: use a private directory and owner-only files.
+    func savePreview(_ image: ClientImage, for macID: String) {
         guard let name = ConnectionList.previewFileName(for: macID) else { return }
         macPreviews[macID] = image
+        #if os(macOS)
+        guard !savedMacsSeeded, let dir = Self.previewsDirectory,
+              let data = ClientPlatform.jpegData(image) else { return }
+        let file = dir.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+            try data.write(to: file, options: .atomic)
+        } catch { return }
+        do {
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch {
+            try? FileManager.default.removeItem(at: file)
+        }
+        #else
         guard !savedMacsSeeded, let dir = Self.previewsDirectory,
               let data = image.jpegData(compressionQuality: 0.72) else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
@@ -277,6 +304,7 @@ extension StreamClient {
         #if DEBUG
         let protection = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.protectionKey] as? FileProtectionType
         print("tiles: kept the picture of \(macID), \(data.count / 1024) KB, protection \(protection?.rawValue ?? "not reported")")
+        #endif
         #endif
     }
 
@@ -1113,7 +1141,7 @@ extension StreamClient {
             queue.async {
                 guard !finished else { return }
                 let proof = PairingProof.deviceProof(key: key, deviceFingerprint: fpDevice, macFingerprint: fpMac)
-                let request = PairRequest(method: method, proof: Base64URL.encode(proof), name: UIDevice.current.name,
+                let request = PairRequest(method: method, proof: Base64URL.encode(proof), name: ClientStatsReporter.localClientName,
                                           model: ClientStatsReporter.hardwareIdentifier)
                 let message = StreamMessage(kind: .pairRequest, timestamp: Date().timeIntervalSince1970, isKeyframe: false,
                                             payload: Wire.encode(request))
