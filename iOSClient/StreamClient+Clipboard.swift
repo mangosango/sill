@@ -1,6 +1,11 @@
 import Foundation
+#if os(macOS)
+import AppKit
+import ObjectiveC
+#else
 import UIKit
 import UniformTypeIdentifiers
+#endif
 import StreamProtocol
 
 /// A moment's line after a Paste: "Pasted on ‹Mac›.", "Sent to ‹Mac›’s clipboard…" or "Too long to
@@ -43,7 +48,26 @@ struct ClipboardReceipt: Equatable {
 //   is on, again on a move's new connection; `stop` when the switch goes off.
 //
 // Everything here is main thread.
+#if os(macOS)
+private var macClipboardAssociation: UInt8 = 0
+#endif
+
 extension StreamClient {
+    #if os(macOS)
+    private var macClipboard: MacClipboard {
+        if let adapter = objc_getAssociatedObject(self, &macClipboardAssociation) as? MacClipboard { return adapter }
+        let adapter = MacClipboard(board: .general)
+        objc_setAssociatedObject(self, &macClipboardAssociation, adapter, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return adapter
+    }
+
+    /// Native UI's explicit “Transfer Local Text” action; remote ⌘V must remain a separate action.
+    func transferLocalClipboard() {
+        guard connected, !macLocked, !inputPaused, Self.clipboardOn,
+              ClipboardPolicy.hostTakes(hostClipboard) else { return }
+        if let text = macClipboard.readForTransfer(maxBytes: Clipboard.maxTextBytes) { sendClipboard([text]) }
+    }
+    #endif
     /// This device's switch, Share Clipboard (the Settings panel's This iPad group): on unless turned
     /// off. The device's own preference, never sent; read at each decision.
     static let clipboardKey = "Sill.shareClipboard"
@@ -87,6 +111,7 @@ extension StreamClient {
     /// Sill becoming active (and a scene of it) is when the chip looks; Sill no longer active, and
     /// VoiceOver turning on or off, stop or start the chip's time (`updateClipboardChipClock`). From init.
     func observeClipboardActivation() {
+        #if !os(macOS)
         let center = NotificationCenter.default
         for name in [UIApplication.didBecomeActiveNotification, UIScene.didActivateNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -101,6 +126,7 @@ extension StreamClient {
         center.addObserver(forName: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.updateClipboardChipClock()
         }
+        #endif
     }
 
     // MARK: The subscription
@@ -148,12 +174,23 @@ extension StreamClient {
     /// A move handed the session to its new connection (`finishMove`): the Mac keeps subscriptions per
     /// connection, so the new one subscribes.
     func clipboardMoved() {
+        #if os(macOS)
+        clipboardPasteWork?.cancel()
+        clipboardPasteWork = nil
+        clipboardReceiptExpiry?.cancel()
+        clipboardReceiptExpiry = nil
+        clipboardReceipt = nil
+        clipboardSent = nil
+        #endif
         clipboardSubscribed = false
         updateClipboardSubscription()
     }
 
     /// The session ended: nothing of it is kept but the handled count.
     func resetClipboard() {
+        #if os(macOS)
+        macClipboard.reset()
+        #endif
         hostClipboard = nil
         clipboardSubscribed = false
         clipboardSent = nil
@@ -174,11 +211,19 @@ extension StreamClient {
 
     /// A kind 32 from the Mac.
     func receiveClipboard(_ payload: Data) {
+        #if os(macOS)
+        guard connected, !macLocked, !inputPaused else { return }
+        let board = macClipboard
+        guard let text = ClipboardPolicy.deviceWrites(payload, switchOn: Self.clipboardOn, hostClipboard: hostClipboard,
+                                                      lastSent: clipboardSent, changeCount: board.changeCount) else { return }
+        board.write(text, lifetime: ClipboardPolicy.deviceExpiry)
+        #else
         let board = UIPasteboard.general
         guard let text = ClipboardPolicy.deviceWrites(payload, switchOn: Self.clipboardOn, hostClipboard: hostClipboard,
                                                       lastSent: clipboardSent, changeCount: board.changeCount) else { return }
         board.setItems([[UTType.utf8PlainText.identifier: text]],
                        options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(ClipboardPolicy.deviceExpiry)])
+        #endif
         clipboardHandled = board.changeCount
         hideClipboardChip()
         #if DEBUG
@@ -188,6 +233,13 @@ extension StreamClient {
 
     // MARK: The chip
 
+    #if os(macOS)
+    func clipboardBecameActive() {}
+    func lookAtClipboard(why: String) {}
+    func clipboardChipShown(_ onScreen: Bool) {}
+    func updateClipboardChipClock() {}
+    func dismissClipboardChip() { hideClipboardChip() }
+    #else
     /// Sill became active: the chip's time runs again if it shows, and the chip looks now, or at the
     /// session's start soon after (`hostClipboardChanged`).
     func clipboardBecameActive() {
@@ -280,6 +332,8 @@ extension StreamClient {
         hideClipboardChip()
     }
 
+    #endif
+
     func hideClipboardChip() {
         clipboardChipExpiry?.cancel()
         clipboardChipExpiry = nil
@@ -292,6 +346,9 @@ extension StreamClient {
     /// What the system's Paste control read on the person's tap (the chip's, or the Settings group's):
     /// sent to the Mac, with its receipt to wait for, or "too long".
     func sendClipboard(_ strings: [String]) {
+        #if os(macOS)
+        guard !macLocked, !inputPaused else { return }
+        #endif
         let mac = macName.isEmpty ? "the Mac" : macName
         switch ClipboardPolicy.deviceSends(strings, connected: connected, hostClipboard: hostClipboard, switchOn: Self.clipboardOn) {
         case .send(let payload):
@@ -300,7 +357,11 @@ extension StreamClient {
             // Until then nothing says it was sent, and the copy is not dealt with.
             let nonce = Data((0..<ClipboardPolicy.receiptLength).map { _ in UInt8.random(in: .min ... .max) })
             send(.ping, payload: nonce)
+            #if os(macOS)
+            let count = macClipboard.changeCount
+            #else
             let count = UIPasteboard.general.changeCount
+            #endif
             if let text = strings.first(where: { !$0.isEmpty }) { clipboardSent = ClipboardPolicy.Sent(text: text, changeCount: count) }
             clipboardReceipt = ClipboardReceipt(nonce: nonce, changeCount: count)
             hideClipboardChip()
@@ -314,7 +375,9 @@ extension StreamClient {
             #endif
         case .tooLong:
             showClipboardNote(ClipboardPolicy.Copy.tooLong(mac: mac), spoken: ClipboardPolicy.Copy.tooLong(mac: mac), warning: true)
+        #if !os(macOS)
             if UIDevice.current.userInterfaceIdiom == .phone { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+        #endif
         case .nothing:
             break
         }
@@ -342,6 +405,9 @@ extension StreamClient {
     /// streaming, the Mac still sharing its clipboard, and never while the tour shows, which keeps
     /// every input from the Mac).
     private func pastesNow(late: Bool) -> Bool {
+        #if os(macOS)
+        guard !macLocked else { return false }
+        #endif
         let pastes = ClipboardPolicy.pastesOnReceipt(rightAway: Self.pasteRightAwayOn, late: late, streaming: active != .none,
                                                      hostClipboard: hostClipboard, tourShows: inputPaused)
         #if DEBUG
@@ -382,9 +448,17 @@ extension StreamClient {
 
     /// A receipt's note and, on an iPhone, the success haptic.
     private func receiptNoted(pasted: Bool) {
+        #if os(macOS)
+        let mac = macName.isEmpty ? "the Mac" : macName
+        let words = pasted ? "Sent to \(mac)’s clipboard; paste shortcut sent." : "Sent to \(mac)’s clipboard."
+        let note = (text: words, spoken: words)
+        #else
         let note = ClipboardPolicy.receiptNote(pasted: pasted, mac: macName.isEmpty ? "the Mac" : macName)
+        #endif
         showClipboardNote(note.text, spoken: note.spoken, warning: false)
+        #if !os(macOS)
         if UIDevice.current.userInterfaceIdiom == .phone { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+        #endif
     }
 
     /// No receipt in time: "Didn’t reach…", and the copy not dealt with, so the chip offers it again (once
@@ -396,7 +470,9 @@ extension StreamClient {
         clipboardReceipt = receipt
         let mac = macName.isEmpty ? "the Mac" : macName
         showClipboardNote(ClipboardPolicy.Copy.notSent(mac: mac), spoken: ClipboardPolicy.Copy.notSent(mac: mac), warning: true)
+        #if !os(macOS)
         if UIDevice.current.userInterfaceIdiom == .phone { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+        #endif
         #if DEBUG
         print("clipboard: no receipt in time: did not reach the Mac")
         #endif
@@ -408,7 +484,11 @@ extension StreamClient {
         print("clipboard: the note: \(text)")
         #endif
         clipboardNote = ClipboardNote(text: text, spoken: spoken, warning: warning, at: uptime)
+        #if os(macOS)
+        MacClipboard.announce(spoken)
+        #else
         UIAccessibility.post(notification: .announcement, argument: spoken)
+        #endif
         clipboardNoteExpiry?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.clipboardNote = nil }
         clipboardNoteExpiry = work

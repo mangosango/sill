@@ -1,0 +1,36 @@
+import AppKit
+
+let board = NSPasteboard.withUniqueName()
+defer { board.releaseGlobally() }
+let adapter = MacClipboard(board: board)
+func local(_ text: String) {
+    board.clearContents()
+    board.setString(text, forType: .string)
+}
+adapter.write("remote", lifetime: 600)
+assert(adapter.readForTransfer(maxBytes: 100) == nil)
+local("new local")
+adapter.expireOwnedWrite()
+assert(board.string(forType: .string) == "new local")
+assert(adapter.readForTransfer(maxBytes: 100) == "new local")
+adapter.write("remote two", lifetime: 600)
+adapter.reset()
+assert(board.string(forType: .string) == nil)
+local("🌏")
+assert(adapter.readForTransfer(maxBytes: 3) == nil)
+assert(adapter.readForTransfer(maxBytes: 4) == "🌏")
+adapter.write("first", lifetime: 600)
+adapter.write("second", lifetime: 600)
+adapter.expireOwnedWrite()
+assert(board.string(forType: .string) == nil)
+local("kept on reset")
+adapter.reset()
+assert(board.string(forType: .string) == "kept on reset")
+// Provenance remains a no-echo boundary even for another adapter/session.
+adapter.write("received", lifetime: 600)
+let second = MacClipboard(board: board)
+assert(second.readForTransfer(maxBytes: 100) == nil)
+second.reset()
+assert(board.string(forType: .string) == "received")
+adapter.reset()
+print("mac-clipboard-adapter: 11 assertions passed (private pasteboard only)")
