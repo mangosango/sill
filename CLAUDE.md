@@ -23,10 +23,11 @@ Formerly winstream; the folder still carries the old name.
 
 **Native Mac viewer (branch `macos-viewer`, UNRELEASED source preview).** The
 integrated progress in `docs/macos-client-plan.md` is authoritative. Packaging
-(universal DMG/ZIP/checksums), native input mutants and preview docs are done. No
-viewer app launch or live acceptance has run. Open: synthetic integration, real
-AppKit/IME/VoiceOver/media, signed/quarantine/update and two-Mac acceptance.
-Persistent pairing needs a viewer-specific signed profile. Host/iOS shipped
+(universal DMG/ZIP/checksums), native input mutants and preview docs are done.
+Signing takes viewer-only team/bundle overrides (Sang's team `RPKWZLZ8NN`, App ID
+`com.sanglee.sill.viewer`, a Developer ID profile). Sang's signed two-Mac tests passed
+pairing persistence, control, input release, reconnect, Korean input, clipboard and
+sound. Still open: sleep/wake, VoiceOver, notarization, quarantine. Host/iOS shipped
 instructions and public download links are unchanged. Details: `docs/HISTORY.md`.
 
 **Release 0.6.0 (2026-11-02) is published. Still open:** App Store submission and

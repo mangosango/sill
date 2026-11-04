@@ -179,6 +179,7 @@ final class StreamInputView: NSView, NSTextInputClient {
         }
     }
     private var connection: AnyCancellable?
+    private var keyUpMonitor: Any?
     private var held: Set<Int> = []
     private var lastPoint = CGPoint(x: 0.5, y: 0.5)
     private var observers: [NSObjectProtocol] = []
@@ -197,6 +198,13 @@ final class StreamInputView: NSView, NSTextInputClient {
     override init(frame: CGRect) {
         super.init(frame: frame)
         addSubview(preedit)
+        // NSWindow swallows Command-key ups; release our held keys before its dispatch.
+        keyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            guard let self, let window = self.window, event.window === window else { return event }
+            let ups = self.keys.keyUp(event)
+            self.emit(ups)
+            return ups.isEmpty ? event : nil
+        }
         let center = NotificationCenter.default
         for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
@@ -210,6 +218,7 @@ final class StreamInputView: NSView, NSTextInputClient {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
     deinit {
+        if let keyUpMonitor { NSEvent.removeMonitor(keyUpMonitor) }
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
             NSWorkspace.shared.notificationCenter.removeObserver(observer)

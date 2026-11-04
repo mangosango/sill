@@ -23,6 +23,17 @@ and connected sources found no issues in packaging, tests or preview documentati
 it did not rerun builds/tests or establish live/signed acceptance. Host/iOS shipped
 instructions and public download links are unchanged.
 
+Viewer signing now accepts viewer-only team/bundle overrides (upstream defaults
+unchanged); Info.plist runtime group and resolved packaging grants agree. Sang's
+team is `RPKWZLZ8NN`; his registered App ID is `com.sanglee.sill.viewer`, with a
+matching Developer ID profile. Offline custom Debug/universal Release/package and
+focused checks passed. Sang's signed two-Mac tests confirm pairing persistence,
+control, input release, network reconnect, Korean input, clipboard and sound/mute.
+The Command-key-up fix in StreamInputView also resolved his clipboard/drag symptom;
+Connect Remotely works with Remote Access enabled on the destination Mac. The hidden
+AppKit routing fixture and all 20 input mutants pass. Sleep/wake, VoiceOver,
+notarization and quarantine remain open. Details: docs/macos-client-plan.md.
+
 **Release 0.6.0 (2026-11-02, PR #274 `integrate-0-6` from main at e4d3034, carrying #269 (the version),
 #270 (the tour once more) and #271 (a locked Mac); Noah's go after testing #274's builds: "Test passed,
 merge please. Do phases 1 through 3").** One version for both apps, as since 0.5.1: Sill for Mac 0.6.0

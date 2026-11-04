@@ -4,6 +4,8 @@
 # --developer-id IDENTITY PROFILE requires a viewer-specific macOS Developer ID profile.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+team="${SILL_VIEWER_TEAM-9B2KKVM937}"
+bundle="${SILL_VIEWER_BUNDLE_ID-me.saffer.sill.viewer}"
 mode=unsigned; identity=''; profile=''
 case "${1:-}" in
     '') [ "$#" = 0 ] || exit 2 ;;
@@ -21,12 +23,14 @@ out="$PWD/.build/viewer"
 mkdir -p "$out"
 work=$(mktemp -d "$out/package.XXXXXX")
 trap 'rm -rf "$work"' EXIT
+python3 Scripts/viewer-profile.py --resolve "$team" "$bundle" "$work/entitlements.plist"
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)
 build=$(git rev-list --count HEAD)
 xcodebuild -project iOSClient/Sill.xcodeproj -scheme 'Sill Viewer' -configuration Release \
     -destination 'generic/platform=macOS' -derivedDataPath "$out/DerivedData" -jobs 4 \
     ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
     REGISTER_APP_WITH_LAUNCH_SERVICES=NO \
+    SILL_VIEWER_TEAM="$team" SILL_VIEWER_BUNDLE_ID="$bundle" \
     MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build" build
 app="$work/Sill Viewer.app"
 ditto "$out/DerivedData/Build/Products/Release/Sill Viewer.app" "$app"
@@ -34,18 +38,19 @@ architectures="$(lipo -archs "$app/Contents/MacOS/Sill Viewer")"
 for arch in arm64 x86_64; do
     case " $architectures " in *" $arch "*) ;; *) echo "error: missing $arch slice" >&2; exit 1;; esac
 done
-[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = me.saffer.sill.viewer ]
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "$bundle" ]
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version" ]
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$build" ]
+[ "$(/usr/libexec/PlistBuddy -c 'Print :SillViewerKeychainGroup' "$app/Contents/Info.plist")" = "$team.$bundle" ]
 if [ "$mode" = developer ]; then
     security cms -D -i "$profile" -o "$work/profile.plist"
-    python3 Scripts/viewer-profile.py "$work/profile.plist" Packaging/SillViewer.entitlements
+    python3 Scripts/viewer-profile.py "$team" "$bundle" "$work/profile.plist" "$work/entitlements.plist"
     cat "$profile" > "$app/Contents/embedded.provisionprofile"
-    codesign --force --options runtime --timestamp --entitlements Packaging/SillViewer.entitlements --sign "$identity" "$app"
+    codesign --force --options runtime --timestamp --entitlements "$work/entitlements.plist" --sign "$identity" "$app"
     codesign -d --extract-certificates="$work/signer" "$app"
-    python3 Scripts/viewer-profile.py "$work/profile.plist" Packaging/SillViewer.entitlements "$work/signer0"
+    python3 Scripts/viewer-profile.py "$team" "$bundle" "$work/profile.plist" "$work/entitlements.plist" "$work/signer0"
     codesign -d --entitlements "$work/signed.plist" --xml "$app"
-    python3 Scripts/viewer-profile.py "$work/profile.plist" "$work/signed.plist" "$work/signer0"
+    python3 Scripts/viewer-profile.py "$team" "$bundle" "$work/profile.plist" "$work/signed.plist" "$work/signer0"
     codesign --verify --deep --strict "$app"
 elif [ "$mode" = adhoc ]; then
     codesign --force --sign - "$app"

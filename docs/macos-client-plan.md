@@ -4,8 +4,55 @@ Status: native viewer implementation integrated on `macos-viewer`; unsigned buil
 all 66 check suites pass. Dedicated offline checks pass after two stale structural
 expectations were corrected. The review's missing IME preedit presentation is fixed
 in e32e97b, with focused checks and unsigned universal Mac builds passing again.
-Live and release-signed acceptance gates remain open; nothing shipped.
+Sang's signed two-Mac test now confirms basic connection/control, local-network pairing
+persistence, input release, network reconnect, Korean text and sound/mute. Remaining
+acceptance gates and reported input issues are listed below; nothing shipped.
 The original foundation-only checkpoint is superseded by the integrated work below.
+
+### Custom viewer signing configuration (offline)
+
+Viewer-only `SILL_VIEWER_TEAM` / `SILL_VIEWER_BUNDLE_ID` settings now resolve the
+runtime Info.plist group and packaging entitlements together; upstream defaults
+remain unchanged. Host/iOS signing and viewer key tags are unchanged. Invalid
+configuration and host/iOS IDs are refused; the runtime never falls back to the
+login keychain. See DEVELOPMENT and the release checklist for Sang's team
+`RPKWZLZ8NN`; Sang registered `com.sanglee.sill.viewer` and supplied a matching
+Developer ID profile. Its macOS grants, expiry and certificate membership were checked;
+Sang then built and launched the signed viewer himself.
+Offline fixture/query/assembly checks, remote-rules (172), unsigned custom Debug,
+default Release, custom universal Release/package and iOS simulator Debug passed (four jobs, registration
+disabled). Resolved built bundle/group agreement and absence of privileged unsigned
+entitlements checked without launching. Known compile warnings remain. No real
+signing, Keychain access, app launch or live acceptance occurred in that offline pass;
+fake profiles prove only the validator's behavior. Sang's subsequent tests are below.
+
+### Manual acceptance and Command-key release (2026-11-03)
+
+Sang reports: pairing persists through Available Macs, input releases on focus loss,
+network reconnect works, text including Korean works, and sound/mute works. Clipboard
+transfer worked, but sharing initially appeared to interfere with click-and-drag;
+Command-V left V repeating until another key was pressed. Both input symptoms are
+resolved in Sang's retest after the fix below. Connect Remotely from Saved Macs works
+once Remote Access is enabled on the destination Mac.
+
+- Reproduced the missing V release with the real StreamInputView in an unshown AppKit
+  window and a recording client: `NSApplication.sendEvent` does not deliver the
+  Command-modified key-up to the view. A local event monitor now releases only keys
+  this view holds, only for its own window, before NSWindow dispatch; no global hook
+  or permission. It consumes only an up it actually handled and is removed at deinit.
+- Regression fixture: `Tests/checks/mac-input/routing/`, no network or real input
+  injection, no visible window, only a private pasteboard. Debug and optimized checks
+  pass: Command-V up exactly once, Command held through V's release, other-window
+  isolation, local Command-Q, focus cleanup, and a drag across a private clipboard
+  write. All 20 input mutants caught, including the missing monitor release and missing
+  window guard; pointer's 28 assertions and viewer-controls checks pass.
+- Sang confirms the key-up fix also resolved the drag interaction he reported with
+  clipboard sharing enabled; no separate clipboard change was needed.
+- Connect Remotely uses the saved addresses and the host's separate Remote Access
+  listener, unlike Available Macs. Sang confirms it works with Remote Access on;
+  no pairing or networking behavior changed here.
+- The agent did not rebuild or replace the user's signed app; Sang performed the
+  manual retest. Sleep/wake, VoiceOver, notarization and quarantine remain open.
 
 ## Goal
 
