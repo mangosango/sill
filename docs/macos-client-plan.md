@@ -2,9 +2,10 @@
 
 Status: native viewer implementation integrated on `macos-viewer`; unsigned builds and
 all 66 check suites pass. Dedicated offline checks pass after two stale structural
-expectations were corrected. Review found missing IME preedit presentation; its fix
-is pending. Live and release-signed acceptance gates remain open; nothing shipped.
-The original phase-1/phase-3 foundation assignment is blocked, not complete.
+expectations were corrected. The review's missing IME preedit presentation is fixed
+in e32e97b, with focused checks and unsigned universal Mac builds passing again.
+Live and release-signed acceptance gates remain open; nothing shipped.
+The original foundation-only checkpoint is superseded by the integrated work below.
 
 ## Goal
 
@@ -361,9 +362,25 @@ viewer DMG/checksum publication and public release documentation remain unfinish
   matrix and signed packaging were not run.
 - The first independent reviews lacked the committed diff and left paths unread.
   Bounded follow-up reviews used diff artifacts: no trust/media finding; one input
-  blocker, invisible IME preedit. `StreamInputView` stores marked text without any
-  presentation. Add a visible, accessible native composition presentation without
-  forwarding uncommitted text. Those reviews are not exhaustive or live approval.
+  blocker, invisible IME preedit, subsequently fixed below. Those reviews are not
+  exhaustive or live approval.
+
+### IME presentation fix at e32e97b
+
+- `StreamInputView` now displays marked text in a native, non-intercepting label,
+  with underlining and UTF-16 selection highlighting. It shares the candidate-window
+  anchor, updates on resize and composition changes, and clears on reset. No new
+  text-sending path was added; existing commit/forget semantics remain unchanged.
+- `Tests/checks/mac-input/run.sh` passed in Debug and optimized Release, including
+  detached label assertions for Chinese/emoji selection, clearing, focus and hit
+  testing. Pointer/viewport (28 assertions) and viewer-controls structural checks
+  passed. Unsigned universal Mac Debug/Release builds passed again (both slices).
+  Logs: `/tmp/sill-ime-v7/`. The earlier iOS/package/full-suite gates were not rerun
+  for this Mac-only slice.
+- Independent current-source review found no issues, with live candidate-panel,
+  VoiceOver and long-composition behavior explicitly unverified. The supervisor
+  separately inspected `7440a61..e32e97b`: only the native input view and its two
+  focused test files changed, with no shared iOS, host or wire changes.
 
 ### Still required before calling it ready
 

@@ -17,8 +17,12 @@ At a4ce755, unsigned Mac Debug/Release (arm64 + x86_64), all three iOS build mod
 the Swift package and all 66 sequential checks passed. a0790f1 fixes a stale UI test
 to require input release before disconnect; a0156cd corrects a stale clipboard-copy
 assertion. All dedicated offline checks now pass. Bounded full-diff follow-up reviews
-found one input blocker: IME preedit is stored but not shown; its fix is pending.
-No application launch or live acceptance test was performed;
+found one input blocker: invisible IME preedit. Fixed in e32e97b with a native
+non-intercepting label, UTF-16 selection highlighting and shared candidate anchor;
+focused input/pointer/control checks and unsigned universal Mac Debug/Release passed
+again. Independent source review found no issues; the supervisor checked the committed
+three-file diff. Live candidate-panel, VoiceOver and long-composition behavior remain
+unverified. No application launch or live acceptance test was performed;
 persistent pairing requires a viewer-specific signed profile, and co-resident
 host/viewer clipboard forwarding is unsupported (warning and sharing switch provided).
 See the plan's integrated-progress section for evidence, deferred release work and
