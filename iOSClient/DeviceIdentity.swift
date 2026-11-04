@@ -16,9 +16,17 @@ import StreamProtocol
 ///
 /// Main thread, or the network queue once made: the identity is immutable and cached.
 enum DeviceIdentity {
+    #if os(macOS)
+    static let tag = Data("me.saffer.sill.viewer.device-key".utf8)
+    #else
     static let tag = Data("me.saffer.sill.device-key".utf8)
+    #endif
     #if DEBUG
+    #if os(macOS)
+    static let secureEnclaveTag = Data("me.saffer.sill.viewer.device-key.se".utf8)
+    #else
     static let secureEnclaveTag = Data("me.saffer.sill.device-key.se".utf8)
+    #endif
     static var usesSecureEnclave: Bool { UserDefaults.standard.bool(forKey: "SillDeviceKeySE") }
     #endif
 
@@ -91,7 +99,8 @@ enum DeviceIdentity {
     static func forget() {
         lock.lock(); defer { lock.unlock() }
         cached = nil
-        let query: [String: Any] = [kSecClass as String: kSecClassKey, kSecAttrApplicationTag as String: currentTag]
+        var query = keyQuery(currentTag)
+        query.removeValue(forKey: kSecMatchLimit as String)
         SecItemDelete(query as CFDictionary)
     }
 
@@ -101,13 +110,17 @@ enum DeviceIdentity {
     }
 
     private static func keyQuery(_ tag: Data) -> [String: Any] {
-        [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        #if os(macOS)
+        query[kSecUseDataProtectionKeychain as String] = true
+        #endif
+        return query
     }
 
     /// A Keychain status as DeviceKeyPolicy reads it.
@@ -157,6 +170,9 @@ enum DeviceIdentity {
         #if DEBUG
         if usesSecureEnclave { attributes.removeValue(forKey: kSecAttrAccessible as String) }   // its token holds its access control
         #endif
+        #if os(macOS)
+        attributes[kSecUseDataProtectionKeychain as String] = true
+        #endif
         return SecItemAdd(attributes as CFDictionary, nil)
     }
 
@@ -183,6 +199,10 @@ enum DeviceIdentity {
             attributes[kSecAttrTokenID as String] = kSecAttrTokenIDSecureEnclave
         }
         #endif
+        #if os(macOS)
+        // Never fall back to the unauthenticated login keychain if signing lacks access.
+        attributes[kSecUseDataProtectionKeychain as String] = true
+        #endif
         attributes[kSecPrivateKeyAttrs as String] = privateAttributes
         var error: Unmanaged<CFError>?
         guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else {
@@ -203,7 +223,10 @@ enum DeviceIdentity {
                 #endif
                 // Deleted again by its reference where it was kept after all, so it never turns up
                 // beside a key a pairing used.
-                SecItemDelete([kSecClass as String: kSecClassKey, kSecValueRef as String: key] as CFDictionary)
+                var deletion = keyQuery(currentTag)
+                deletion.removeValue(forKey: kSecMatchLimit as String)
+                deletion[kSecValueRef as String] = key
+                SecItemDelete(deletion as CFDictionary)
                 throw IdentityError("the Keychain didn’t keep it: \(status)")
             }
         }

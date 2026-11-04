@@ -1087,6 +1087,7 @@ final class StreamClient: ObservableObject {
         clientLifecycle = ClientLifecycle(window: { [weak self] in self?.displayView.window }) { [weak self] awake, visible, woke in
             guard let self else { return }
             self.appInForeground = awake
+            self.sound.setSceneForeground(visible)
             if woke {
                 self.resetLiveness()
                 self.cameForward()
@@ -3403,7 +3404,11 @@ final class StreamClient: ObservableObject {
     /// What Disconnect does first for the tile's picture (ConnectionList.freshPicture). Main thread.
     private func freshPictureOnLeaving() -> ConnectionList.FreshPicture {
         guard connected, videoSize != .zero, let macID = session?.macID else { return .stored }
+        #if os(macOS)
+        let inFront = displayView.window?.isKeyWindow == true
+        #else
         let inFront = displayView.window?.windowScene?.activationState == .foregroundActive
+        #endif
         let takes = ConnectionList.takesPreview(style: connectionStyle, sceneActive: inFront, saved: savedMac(macID) != nil)
         let now = ProcessInfo.processInfo.systemUptime
         let decision = ConnectionList.freshPicture(takesPreview: takes, streaming: active != .none,
@@ -3582,7 +3587,11 @@ final class StreamClient: ObservableObject {
         // session lost or ended by the Mac gives the one kept.
         freshPictureWait = nil
         if connected, videoSize != .zero, let macID = session?.macID {
+            #if os(macOS)
+            let inFront = displayView.window?.isKeyWindow == true
+            #else
             let inFront = displayView.window?.windowScene?.activationState == .foregroundActive
+            #endif
             if ConnectionList.takesPreview(style: connectionStyle, sceneActive: inFront, saved: savedMac(macID) != nil) {
                 takePreview(of: macID)
             } else {
