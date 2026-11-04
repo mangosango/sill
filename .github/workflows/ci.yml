@@ -87,6 +87,12 @@ jobs:
       - name: Build the Mac host, the CLI and the probes (swift build -c release)
         run: swift build -c release
 
+      - name: Viewer packaging self-checks
+        run: python3 Tests/viewer-package/check.py
+
+      - name: Build and package the universal Mac viewer (unsigned)
+        run: bash Scripts/make-viewer.sh
+
       - name: Pure checks (Tests/checks/run-all.sh)
         run: Tests/checks/run-all.sh
 
