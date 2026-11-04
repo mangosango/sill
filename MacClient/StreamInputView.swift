@@ -21,12 +21,58 @@ enum MacPointerGeometry {
     }
 }
 
+#if !POINTER_POLICY_TEST || MAC_INPUT_TEST
+/// A read-only native preedit, never a second text responder or pointer target.
+final class MacPreeditLabel: NSTextField {
+    override var acceptsFirstResponder: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    init() {
+        super.init(frame: .zero)
+        isEditable = false
+        isSelectable = false
+        isBezeled = false
+        drawsBackground = true
+        backgroundColor = .textBackgroundColor
+        setAccessibilityLabel("Input method composition")
+        isHidden = true
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func update(_ composition: TextComposition, in bounds: CGRect) {
+        guard let marked = composition.marked, !marked.isEmpty else {
+            attributedStringValue = NSAttributedString(string: "")
+            isHidden = true
+            return
+        }
+        let text = NSMutableAttributedString(string: marked, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+            .foregroundColor: NSColor.textColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ])
+        // Both ranges are UTF-16; subtract only after clamping to avoid NSNotFound overflow.
+        let start = min(max(0, composition.markedSelection.location), text.length)
+        let selection = NSRange(location: start, length: min(max(0, composition.markedSelection.length), text.length - start))
+        if selection.length > 0 {
+            text.addAttributes([.backgroundColor: NSColor.selectedTextBackgroundColor,
+                                .foregroundColor: NSColor.selectedTextColor], range: selection)
+        }
+        attributedStringValue = text
+        sizeToFit()
+        frame.size.width = min(frame.width, max(0, bounds.width))
+        frame.origin = CGPoint(x: bounds.midX - frame.width / 2, y: bounds.minY)
+        isHidden = false
+    }
+}
+#endif
+
 #if !POINTER_POLICY_TEST
 /// Attach above the existing renderer with identical bounds; call refresh when client state changes.
 /// Keyboard events use either the native text system or the existing HID forwarder.
 final class StreamInputView: NSView, NSTextInputClient {
     private var keys = MacKeyForwarder()
     private var composition = TextComposition()
+    private let preedit = MacPreeditLabel()
     private var interpreting: NSEvent?
     private func emit(_ events: [InputEvent]) { for event in events { client?.sendInput(event) } }
     private func emitText(_ outputs: [TextComposition.Output]) {
@@ -37,7 +83,15 @@ final class StreamInputView: NSView, NSTextInputClient {
                 for _ in 0..<count { emit(KeyChord.press(0x2A, with: [])) }
             }
         }
+        updatePreedit()
+    }
+    private func updatePreedit() {
+        preedit.update(composition, in: bounds)
         inputContext?.invalidateCharacterCoordinates()
+    }
+    override func layout() {
+        super.layout()
+        updatePreedit()
     }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard enabled, !MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags)
@@ -98,7 +152,8 @@ final class StreamInputView: NSView, NSTextInputClient {
     func characterIndex(for point: NSPoint) -> Int { composition.selectedRange.location }
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
         actualRange?.pointee = composition.selectedRange
-        return window?.convertToScreen(convert(NSRect(x: bounds.midX, y: bounds.minY, width: 1, height: 20), to: nil)) ?? .zero
+        let anchor = preedit.isHidden ? NSRect(x: bounds.midX, y: bounds.minY, width: 1, height: 20) : preedit.frame
+        return window?.convertToScreen(convert(anchor, to: nil)) ?? .zero
     }
     override func doCommand(by selector: Selector) {
         guard enabled else { return }
@@ -141,6 +196,7 @@ final class StreamInputView: NSView, NSTextInputClient {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        addSubview(preedit)
         let center = NotificationCenter.default
         for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
@@ -179,6 +235,7 @@ final class StreamInputView: NSView, NSTextInputClient {
         if client?.connected == true, client?.inputPaused == false { emitText(composition.forget()) }
         emit(keys.releaseAll())
         composition = TextComposition()
+        updatePreedit()
         inputContext?.discardMarkedText()
         for button in held.sorted() { send(button == 0 ? .leftUp : .rightUp, at: lastPoint) }
         held.removeAll()
