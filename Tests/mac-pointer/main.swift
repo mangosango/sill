@@ -11,4 +11,10 @@ assert(MacPointerGeometry.phases(.cancelled, momentum: true) == [.momentumEnded]
 for mask in 0..<16 {
     assert(MacPointerGeometry.acceptsInput(keyWindow: mask & 1 != 0, firstResponder: mask & 2 != 0, connected: mask & 4 != 0, paused: mask & 8 != 0) == (mask == 7))
 }
-print("Mac pointer: 23 assertions passed")
+assert(MacViewportRate.wanted(screen: 120, lowPower: false, away: false) == 120)
+assert(MacViewportRate.wanted(screen: 120, lowPower: true, away: false) == 60)
+assert(MacViewportRate.wanted(screen: 120, lowPower: false, away: true) == 60)
+assert(MacViewportRate.wanted(screen: 30, lowPower: true, away: true) == 30)
+assert(MacViewportRate.wanted(screen: 0, lowPower: false, away: false) == 30)
+
+print("Mac pointer/viewport: 28 assertions passed")

@@ -27,7 +27,7 @@ struct SillViewerApp: App {
                 } else {
                     ViewerConnectView(client: client)
                 }
-                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself. Remote Menus are not available in this checkpoint.")
+                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself. Keyboard input and Remote Menus are not available in this checkpoint.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding()
@@ -175,8 +175,9 @@ private struct ViewerPairingView: View {
 
 private struct ViewerPicture: NSViewRepresentable {
     let client: StreamClient
-    func makeNSView(context: Context) -> HEVCDisplayView { client.displayView }
-    func updateNSView(_ view: HEVCDisplayView, context: Context) {}
+    func makeNSView(context: Context) -> ViewerSurface { ViewerSurface(client: client) }
+    func updateNSView(_ view: ViewerSurface, context: Context) { view.refresh() }
+    static func dismantleNSView(_ view: ViewerSurface, coordinator: ()) { view.detach() }
 }
 
 // Relinquish input before a control changes the remote source or opens a native menu.
@@ -215,7 +216,7 @@ private struct ViewerControls: View {
                         Text(TextScale.title(at: value)).tag(value)
                     }
                 }.disabled(!client.textScaleSelectable || client.macLocked)
-                Button("Release Keyboard") { releasePicture() }
+                Button("Release Input") { releasePicture() }
             }.disabled(client.macLocked)
             DisclosureGroup("Stream Settings") {
                 settings
@@ -223,7 +224,7 @@ private struct ViewerControls: View {
             if let problem = client.settingsProblem { Text(problem).foregroundStyle(.red).textSelection(.enabled) }
             Toggle("Share Clipboard", isOn: $sharing)
                 .onChange(of: sharing) { _ in releasePicture(); client.clipboardSwitchChanged() }
-            Text("Warning: a Sill host running on this Mac may forward received clipboard text to its devices. Turn sharing off to prevent viewer clipboard transfers. Remote Command-V uses the remote clipboard; it does not transfer local text.")
+            Text("Warning: a Sill host running on this Mac may forward received clipboard text to its devices. Turn sharing off to prevent viewer clipboard transfers. When keyboard input is implemented, remote Command-V will use the remote clipboard; it will not transfer local text.")
                 .font(.caption).foregroundStyle(.secondary)
             Button("Transfer Local Text to Remote Clipboard") { releasePicture(); client.transferLocalClipboard() }
                 .disabled(!sharing || client.macLocked || !ClipboardPolicy.hostTakes(client.hostClipboard))

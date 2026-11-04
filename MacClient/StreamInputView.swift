@@ -59,6 +59,8 @@ final class StreamInputView: NSView {
                 self.releaseInput()
             })
         }
+        observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.releaseInput() })
+        observers.append(center.addObserver(forName: NSApplication.didHideNotification, object: nil, queue: .main) { [weak self] _ in self?.releaseInput() })
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.releaseInput() })
     }
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -152,3 +154,78 @@ final class StreamInputView: NSView {
     }
 }
 #endif
+
+#if !POINTER_POLICY_TEST
+/// One native surface owns geometry and pointer input; the renderer remains non-hit-testing.
+final class ViewerSurface: NSView {
+    let input = StreamInputView(frame: .zero)
+    private let client: StreamClient
+    private var observers: [NSObjectProtocol] = []
+    private var pending: DispatchWorkItem?
+    private var lastReport = -Double.infinity
+    private var source: StreamSource?
+
+    init(client: StreamClient) {
+        self.client = client
+        super.init(frame: .zero)
+        addSubview(client.displayView)
+        addSubview(input)
+        input.client = client
+        for name in [NSWindow.didChangeScreenNotification, NSWindow.didChangeBackingPropertiesNotification,
+                     NSWindow.didEndLiveResizeNotification, Notification.Name.NSProcessInfoPowerStateDidChange] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let self else { return }
+                if let window = note.object as? NSWindow, window !== self.window { return }
+                self.report()
+            })
+        }
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+    deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    override func layout() {
+        super.layout()
+        client.displayView.frame = bounds
+        input.frame = bounds
+        input.refresh()
+        if !inLiveResize || ProcessInfo.processInfo.systemUptime - lastReport >= 0.1 { report(force: false) }
+        else {
+            pending?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.report(force: false) }
+            pending = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
+        }
+    }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); report() }
+    func refresh() {
+        input.refresh()
+        let changed = source != client.active
+        source = client.active
+        report(force: changed)
+    }
+    private func report(force: Bool = true) {
+        pending?.cancel()
+        pending = nil
+        guard window != nil, bounds.width > 0, bounds.height > 0, client.connected else { return }
+        let fps = MacViewportRate.wanted(screen: window?.screen?.maximumFramesPerSecond ?? 60,
+            lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled, away: client.awayCapsFrameRate)
+        let viewport = Viewport(width: bounds.width, height: bounds.height,
+            scale: client.lastViewport?.scale, localCursor: true, fps: fps)
+        guard force || viewport != client.lastViewport else { return }
+        lastReport = ProcessInfo.processInfo.systemUptime
+        client.sendViewport(viewport)
+    }
+    func detach() {
+        pending?.cancel()
+        pending = nil
+        input.releaseInput()
+        input.client = nil
+    }
+}
+#endif
+
+enum MacViewportRate {
+    static func wanted(screen: Int, lowPower: Bool, away: Bool) -> Int {
+        let rate = max(30, screen)
+        return lowPower || away ? min(60, rate) : rate
+    }
+}
