@@ -17,6 +17,8 @@ import StreamProtocol
 /// Main thread, or the network queue once made: the identity is immutable and cached.
 enum DeviceIdentity {
     #if os(macOS)
+    // Packaging must authorize this exact viewer-only group; unsigned builds fail closed.
+    static let accessGroup = "9B2KKVM937.me.saffer.sill.viewer"
     static let tag = Data("me.saffer.sill.viewer.device-key".utf8)
     #else
     static let tag = Data("me.saffer.sill.device-key".utf8)
@@ -74,6 +76,11 @@ enum DeviceIdentity {
             #if DEBUG
             print("device key: the Keychain didn’t answer (\(status)); no new key made")
             #endif
+            #if os(macOS)
+            if status == errSecMissingEntitlement {
+                throw IdentityError("Sill Viewer needs a signed provisioning profile authorizing keychain group \(accessGroup); unsigned builds cannot pair")
+            }
+            #endif
             throw IdentityError("the Keychain didn’t answer: \(status)")
         }
         guard let id = RemoteIdentity(privateKey: key) else { throw IdentityError("the key couldn’t make a certificate") }
@@ -119,6 +126,7 @@ enum DeviceIdentity {
         ]
         #if os(macOS)
         query[kSecUseDataProtectionKeychain as String] = true
+        query[kSecAttrAccessGroup as String] = accessGroup
         #endif
         return query
     }
@@ -172,6 +180,7 @@ enum DeviceIdentity {
         #endif
         #if os(macOS)
         attributes[kSecUseDataProtectionKeychain as String] = true
+        attributes[kSecAttrAccessGroup as String] = accessGroup
         #endif
         return SecItemAdd(attributes as CFDictionary, nil)
     }
@@ -202,6 +211,10 @@ enum DeviceIdentity {
         #if os(macOS)
         // Never fall back to the unauthenticated login keychain if signing lacks access.
         attributes[kSecUseDataProtectionKeychain as String] = true
+        attributes[kSecAttrAccessGroup as String] = accessGroup
+        #endif
+        #if os(macOS)
+        privateAttributes[kSecAttrAccessGroup as String] = accessGroup
         #endif
         attributes[kSecPrivateKeyAttrs as String] = privateAttributes
         var error: Unmanaged<CFError>?
