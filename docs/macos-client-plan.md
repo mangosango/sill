@@ -342,9 +342,10 @@ pairing needs a matching viewer provisioning profile and signing entitlements;
 unsigned and ad-hoc builds do not establish that acceptance gate.
 
 `Scripts/make-viewer.sh` builds a universal `Sill Viewer.app` and separately named
-`Sill-Viewer.zip` under `.build/viewer/`. CI builds the unsigned viewer without
-replacing host release assets. Signing, notarization, stapling, quarantine acceptance,
-viewer DMG/checksum publication and public release documentation remain unfinished.
+`Sill-Viewer.dmg`, `Sill-Viewer.zip` and both `.sha256` files under `.build/viewer/`.
+CI keeps those four unsigned artifacts separate from host release assets. Developer
+ID execution, notarization, stapling, quarantine acceptance and publication remain
+operator gates; the scripts do not perform them.
 
 ### Verified at a4ce755, with test-only corrections a0790f1 and a0156cd
 
@@ -381,6 +382,33 @@ viewer DMG/checksum publication and public release documentation remain unfinish
   VoiceOver and long-composition behavior explicitly unverified. The supervisor
   separately inspected `7440a61..e32e97b`: only the native input view and its two
   focused test files changed, with no shared iOS, host or wire changes.
+
+### Packaging, native mutants and documentation follow-up
+
+- f0632a2: real unsigned universal Release build and separate DMG/ZIP packaging
+  passed with four compile jobs and LaunchServices registration disabled. Bundle
+  0.6.1 (1303), `me.saffer.sill.viewer`, arm64 and x86_64; both checksums passed.
+  Read-only private DMG inspection reported exactly the app and Applications link,
+  with bundle comparison passing and the mount detached; no application launched.
+  `Tests/viewer-package/check.py` passed profile/argument and behavioral failure,
+  cleanup and prior-output isolation checks. CI was inspected, not run on GitHub.
+  Packaging promotes validated outputs by sequential moves, not an atomic swap.
+- 4927b32: focused sequential scratch-copy native input mutation checks passed:
+  attempted 18, killed 18, survived 0, not-applied 0, compile-error 0, runtime-error 0.
+  Both harness baselines passed first. Compile failures are not kills; behavioral
+  assertion traps are. Normal mac-input Debug/optimized Release and pointer tests
+  (28 assertions) passed. Logs: `/tmp/sill-input-mutants-v8.log`,
+  `/tmp/sill-input-normal-v8.log`, `/tmp/sill-pointer-normal-v8.log`.
+  Direct pointer-script execution was permission denied; invoking it with bash passed.
+  Coverage excludes full responder callbacks/client sends: focus notification
+  release, raw/text double emission, reset wiring and marked-text network silence
+  are not mutation-proven. Source-wiring greps are not behavioral kills.
+- Documentation now records preview usage/builds and manual release gates in
+  DEVELOPMENT, README, SECURITY and the release checklist. Public site pages remain
+  about shipped apps; no viewer download link or release promise was added.
+  This documentation pass ran offline syntax/link/consistency checks only, not new
+  builds or live acceptance. Packaging and mutation diffs still need independent
+  review. Reported free disk for both implementation slices and this pass: 128 GiB.
 
 ### Still required before calling it ready
 

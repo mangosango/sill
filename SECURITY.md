@@ -60,3 +60,14 @@ a link to its executable): it knows itself by its code signature and its
 bundle. Sill for Mac 0.4.0 to 0.5.1, and the nightly builds before the 0.6.0
 release, knew themselves by their folder's name and take them from a renamed
 copy or a link: update to the newest release.
+
+## Unreleased viewer source preview
+
+The `macos-viewer` branch's Sill Viewer is not a released or live-validated client.
+It shares the existing client protocol but has a separate scoped viewer identity;
+persistent pairing requires viewer-specific signing/profile authorization. It does
+not migrate or adopt Sill for Mac's identity. Co-resident clipboard forwarding and
+recursive viewing are unsupported: a local host may forward text received by the
+viewer to its subscribers. Turn off viewer Share Clipboard to prevent transfers.
+See [developer limitations](docs/DEVELOPMENT.md#unreleased-mac-viewer-source-preview).
+Isolated policy tests do not establish no-echo, physical-input or live-media safety.

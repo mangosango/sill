@@ -8,25 +8,19 @@ Formerly winstream; the folder still carries the old name.
 
 ## Current step
 
-**Native Mac viewer (branch `macos-viewer`, not shipped).** The operator approved
-`docs/macos-client-plan.md` and implementation with a Pi subagent swarm. The native
-Sill Viewer target, shared-client platform boundaries, scoped viewer identity,
-connection/pairing UI, renderer, pointer/keyboard/IME input, stream controls, remote
-menus, clipboard/audio adapters and separate universal ZIP packaging are integrated.
-At a4ce755, unsigned Mac Debug/Release (arm64 + x86_64), all three iOS build modes,
-the Swift package and all 66 sequential checks passed. a0790f1 fixes a stale UI test
-to require input release before disconnect; a0156cd corrects a stale clipboard-copy
-assertion. All dedicated offline checks now pass. Bounded full-diff follow-up reviews
-found one input blocker: invisible IME preedit. Fixed in e32e97b with a native
-non-intercepting label, UTF-16 selection highlighting and shared candidate anchor;
-focused input/pointer/control checks and unsigned universal Mac Debug/Release passed
-again. Independent source review found no issues; the supervisor checked the committed
-three-file diff. Live candidate-panel, VoiceOver and long-composition behavior remain
-unverified. No application launch or live acceptance test was performed;
-persistent pairing requires a viewer-specific signed profile, and co-resident
-host/viewer clipboard forwarding is unsupported (warning and sharing switch provided).
-See the plan's integrated-progress section for evidence, deferred release work and
-required two-Mac tests; the older renderer-only checkpoint is superseded.
+**Native Mac viewer (branch `macos-viewer`, UNRELEASED source preview).** The
+integrated progress in `docs/macos-client-plan.md` is authoritative, not historical
+assignments. f0632a2 adds separate universal DMG/ZIP/checksums and packaging isolation
+checks; a real unsigned Release build/package passed, with LaunchServices registration
+disabled. 4927b32 adds 18 scratch behavioral native input mutants, all killed, none
+unapplied or compile-failed; this does not prove responder callbacks or network
+no-emission. Developer/preview documentation and manual release gates are now in
+README, DEVELOPMENT, SECURITY and the release checklist. No viewer app launch or
+live acceptance was performed. Persistent pairing requires a viewer-specific signed
+profile; co-resident clipboard forwarding and recursive viewing are unsupported.
+Synthetic integration, real AppKit/IME/VoiceOver/media, signed/quarantine/update and
+two-Mac acceptance remain open, with independent review still required. Host/iOS
+shipped instructions and public download links are unchanged.
 
 **Release 0.6.0 (2026-11-02, PR #274 `integrate-0-6` from main at e4d3034, carrying #269 (the version),
 #270 (the tour once more) and #271 (a locked Mac); Noah's go after testing #274's builds: "Test passed,

@@ -253,3 +253,10 @@ public issue. These rules, with the sponsors and the contributors, are at
 
 Sill is licensed under the [Apache License 2.0](LICENSE).
 Copyright 2026 Noah Saffer.
+
+## Unreleased Mac viewer source preview
+
+The `macos-viewer` branch also contains **Sill Viewer**, a separate native Mac
+client, not a shipped download or a replacement for Sill for Mac (the host).
+It has not passed real-Mac acceptance. See the [preview developer notes](docs/DEVELOPMENT.md#unreleased-mac-viewer-source-preview)
+for build commands, pairing requirements and unsupported coexistence cases.

@@ -2440,3 +2440,53 @@ paired with the other. `swift Scripts/asc.swift groups --key-file â€¦ --key-id â
   release).
 - `design/`: the app icon, the disk image's background, and the iPad App
   Store screenshots the README shows (`screenshots/`).
+
+## Unreleased Mac viewer source preview
+
+`macos-viewer` contains the separate `Sill Viewer` target in
+`iOSClient/Sill.xcodeproj`, using the existing shared client sources, not a new
+host or wire protocol. One app-owned session serves one viewer window; it asks
+for the Desktop first, then permits picking a window. This is an **unreleased
+source preview**, not real-Mac validation. The shipped download remains the host.
+
+The remote Mac still runs Sill for Mac and grants that host Screen Recording and
+Accessibility. The viewer does not need those grants to receive video and send
+input from its focused picture. Local Command-Q and accessibility Control-Option
+chords stay local; Command-Control-Option-K releases the keyboard locally.
+Release Input also relinquishes picture input. Candidate panels, physical input
+and assistive-technology behavior still require live acceptance.
+
+Share Clipboard allows remote text to replace the viewer Mac's clipboard.
+**Transfer Local Text to Remote Clipboard** explicitly reads and sends local text;
+remote Command-V only pastes the remote clipboard and transfers no local text.
+Co-resident host/viewer clipboard forwarding is unsupported: a local host can
+forward received text to its subscribers. Disable Share Clipboard to prevent
+viewer transfers. Recursive viewing of this Mac's own viewer is unsupported;
+use two Macs for acceptance, not a self-view as proof of correctness.
+
+Persistent pairing uses the viewer's own `me.saffer.sill.viewer` scoped
+data-protection Keychain, never the host identity or login-keychain fallback.
+Unsigned/ad-hoc builds cannot establish persistent pairing acceptance. A matching
+viewer-specific macOS Developer ID profile and entitlements are required; the
+host profile is not a substitute. No such credentials are supplied here.
+
+Offline build/package (Xcode 27.1 or later in the 27 series; at least 25 GB free):
+
+```sh
+bash Scripts/make-viewer.sh
+python3 Tests/viewer-package/check.py
+Tests/checks/mac-input/run.sh
+Tests/checks/mac-input/run.sh --mutants
+bash Tests/mac-pointer/run.sh
+(cd .build/viewer && shasum -a 256 -c Sill-Viewer.dmg.sha256 && shasum -a 256 -c Sill-Viewer.zip.sha256)
+```
+
+The builder uses four compile jobs, universal Release slices and
+`REGISTER_APP_WITH_LAUNCH_SERVICES=NO`, without installing or launching. Outputs
+are `.build/viewer/Sill Viewer.app`, `Sill-Viewer.dmg`, `Sill-Viewer.zip` and their
+two `.sha256` files. The conventional HFS+ DMG contains the app and an Applications
+link, without the host's custom Finder layout. Nothing is notarized or published.
+`bash Scripts/package-viewer.sh APP OUTPUT_DIRECTORY` repackages an already checked
+bundle named `Sill Viewer.app`; it does not build, sign, mount or launch it.
+For operator-only signing and release gates see the
+[viewer release checklist](release-checklist.md#unreleased-viewer-release-gates).

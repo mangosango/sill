@@ -1346,3 +1346,52 @@ is not a beta. When GitHub replaces the
 preview with a regular macOS 27 image, change `runs-on` in the three files. The image's `bash` is
 3.2, macOS's own, and runs every `run:` step: write steps it can parse (it ends a `$(` at the `)`
 of a `case` pattern inside it) and try them with `/bin/bash`, not zsh.
+
+## Unreleased viewer release gates
+
+Sill Viewer is an unreleased source preview on `macos-viewer`. Do not change the
+shipped host/iOS download links or offer viewer artifacts until these gates pass.
+The existing host release workflow does not release the viewer. CI's four separate
+unsigned viewer artifacts are build evidence, not notarized downloads.
+
+1. Review the integrated progress in [the plan](macos-client-plan.md#implementation-progress-integrated-viewer).
+   Complete synthetic-loopback rendering/input/menu/media tests, then the plan's
+   two-Mac tests: Desktop first, window selection, release/focus, physical keyboard,
+   IME candidates, VoiceOver, sound/device changes, sleep/wake and long sessions.
+   Do not call detached assertions callback-delivery or network-no-emission proof.
+2. Operator only, outside an offline documentation run: obtain a viewer-specific
+   macOS Developer ID profile for `me.saffer.sill.viewer`, team `9B2KKVM937`, granting
+   `Packaging/SillViewer.entitlements`, with the actual signing certificate and an
+   unexpired profile. The host profile cannot be reused. With real paths/identity
+   supplied by the operator, the existing command is:
+
+   ```sh
+   bash Scripts/make-viewer.sh --developer-id "$VIEWER_SIGN_IDENTITY" "$VIEWER_PROFILE"
+   ```
+
+   `--adhoc` is a separate local build mode without pairing entitlements, not a
+   substitute for this gate. The script checks profile grants, expiry, signer,
+   signed entitlements, bundle identity/version/build and universal slices. It does
+   not notarize, staple, install or publish. Inspect signatures and embedded profile
+   again; test pairing, relaunch and update retaining the same viewer identity on
+   a second Mac, without touching host identity. Verify refusal with invalid grants.
+3. Operator only: use Apple's `xcrun notarytool submit … --keychain-profile … --wait`
+   with manually provisioned credentials for the signed ZIP; inspect Accepted status
+   and logs before `xcrun stapler staple` and `xcrun stapler validate` on the app.
+   Repackage the stapled app with `Scripts/package-viewer.sh`, sign the resulting
+   DMG with the same Developer ID (`codesign --sign … --timestamp`), submit that DMG
+   separately, inspect its acceptance, then staple and validate the DMG. Recompute
+   **both** checksum files after final artifact changes using `shasum -a 256`, and
+   verify them with `shasum -a 256 -c`. There is no automated viewer notarization
+   or publication tool; do not run host `release.sh` to fill that gap.
+4. Operator only: check Gatekeeper (`spctl -a -vv -t exec` for the app and
+   `spctl -a -vv -t open --context context:primary-signature` for the DMG), then a
+   real quarantined download on a second Mac: mount, drag, launch offline, pair,
+   relaunch and update with pairing intact. Verify arm64 and x86_64, permissions
+   on the host rather than viewer, and the exact contents/checksums of final assets.
+5. Only after review and operator acceptance, publish separately named viewer
+   assets manually. Then add verified viewer URLs to public pages and scoped
+   privacy/support copy describing explicit transfer, remote clipboard replacement,
+   identity and coexistence limits. Until then leave those pages' shipped claims
+   and host links unchanged; do not promise a release date or blanket accessibility,
+   privacy or no-echo compliance.
