@@ -1,6 +1,9 @@
 # Sill Viewer for macOS
 
-Status: implementation started; renderer checkpoint only. No runnable Mac target yet.
+Status: native viewer implementation integrated on `macos-viewer`; unsigned builds and
+all 66 check suites pass. Dedicated offline checks pass after two stale structural
+expectations were corrected. Review found missing IME preedit presentation; its fix
+is pending. Live and release-signed acceptance gates remain open; nothing shipped.
 The original phase-1/phase-3 foundation assignment is blocked, not complete.
 
 ## Goal
@@ -322,7 +325,66 @@ file transfer, image clipboard, remote Dock integration, global shortcut capture
 host speaker muting, new virtual-display behavior, Windows/Linux hosts and CloudKit
 pairing. None is necessary to deliver the requested Mac-to-Mac remote desktop.
 
-## Implementation progress: renderer checkpoint
+## Implementation progress: integrated viewer
+
+The native `Sill Viewer` target in `iOSClient/Sill.xcodeproj` now compiles the shared
+client with explicit AppKit platform boundaries. `MacClient/` contains the renderer,
+connection/pairing UI, pointer and keyboard/IME bridge, viewport reporting, stream
+controls, clipboard and audio adapters, and remote menu UI. One app-owned client
+serves one window. Existing host and wire sources are unchanged. Selected renderer
+and input code credits Alexander Deutsch's PR #128; unrelated cross-platform hosts
+and PR #66's protocol changes are not imported.
+
+Viewer identity uses `me.saffer.sill.viewer` and an explicitly scoped data-protection
+Keychain, with no login-keychain fallback or host-identity migration. Persistent
+pairing needs a matching viewer provisioning profile and signing entitlements;
+unsigned and ad-hoc builds do not establish that acceptance gate.
+
+`Scripts/make-viewer.sh` builds a universal `Sill Viewer.app` and separately named
+`Sill-Viewer.zip` under `.build/viewer/`. CI builds the unsigned viewer without
+replacing host release assets. Signing, notarization, stapling, quarantine acceptance,
+viewer DMG/checksum publication and public release documentation remain unfinished.
+
+### Verified at a4ce755, with test-only corrections a0790f1 and a0156cd
+
+- Xcode 27.2 (27B52): unsigned universal Mac Debug and Release; both executables
+  contain arm64 and x86_64. iOS Debug and Release for the generic simulator, and
+  Debug for a generic device, passed. `swift build -c release --jobs 4` passed.
+- `Tests/checks/run-all.sh`: all 66 suites passed sequentially in 556 seconds.
+  Renderer geometry/attachment, platform helpers and assembly checks also passed.
+- The connect-UI structural check stopped the verification run: it still expected
+  disconnect alone. a0790f1 requires input release before disconnect and passes.
+  Dedicated identity checks, pointer/viewport (28 assertions) and remote menus
+  (12 assertions) then passed. A second stale literal expected earlier clipboard
+  wording; a0156cd aligns it with the explicit remote/local distinction. Controls
+  and surface structural checks and the 16 packaging checks pass. The full mutant
+  matrix and signed packaging were not run.
+- The first independent reviews lacked the committed diff and left paths unread.
+  Bounded follow-up reviews used diff artifacts: no trust/media finding; one input
+  blocker, invisible IME preedit. `StreamInputView` stores marked text without any
+  presentation. Add a visible, accessible native composition presentation without
+  forwarding uncommitted text. Those reviews are not exhaustive or live approval.
+
+### Still required before calling it ready
+
+No viewer application has been launched during this implementation. Compilers and
+isolated tests do not prove synthetic-loopback rendering, actual AppKit key delivery,
+IME/candidate behavior, menu tracking, VoiceOver, audio output/device changes,
+sleep/wake, real TLS pairing or a one-hour remote session. The two-Mac and signed
+acceptance gates above still apply. Builds retain the known shared-client and
+CaptureProbe warnings, plus the viewer's deprecated `onChange` overload and missing
+app-category warning.
+
+Co-resident clipboard forwarding is **unsupported**, not merely untested: a local
+Sill host can forward text received by the viewer to its own subscribers. The viewer
+warns beside Share Clipboard and permits disabling it; no host-side loop defense was
+added. Do not claim the no-echo or host/viewer coexistence gate passed. Public download
+and marketing pages still describe the shipped apps, not this unvalidated viewer.
+
+## Historical implementation progress: renderer checkpoint
+
+The following records the first checkpoint only; its missing-target and ownership
+notes were superseded by the integrated implementation above.
 
 The implementation supervisor narrowed this worker first to phase 1, then to an
 independently compiled native renderer because the worker's remaining execution
@@ -399,9 +461,10 @@ Only the integration owner edits shared StreamClient lifecycle/trust and the
 project while foundation resumes. This ownership list is a handoff boundary,
 not a claim that the three lanes can start independently at this checkpoint.
 
-## Decisions to confirm before implementation
+## Approved implementation defaults
 
-The plan can proceed with these defaults unless changed:
+The operator approved proceeding with the plan and a Pi subagent swarm. The
+implementation uses these defaults:
 
 1. Separate Sill Viewer app rather than adding a viewer window to the existing host.
 2. Native Mac UI, macOS 14+, universal binary, Developer ID distribution first.
@@ -409,6 +472,7 @@ The plan can proceed with these defaults unless changed:
 4. Local system shortcuts and ⌘Q stay local; no global input capture permission.
 5. Text clipboard uses an explicit local-to-remote transfer action, not continuous sync.
 
-No existing app behavior has been changed or tested by writing this plan. The
-native input/IME bridge, signed keychain persistence and real Mac lifecycle are
-the highest-risk pieces and need the acceptance gates above before release.
+The plan-only commit changed no application behavior. Subsequent implementation
+changes shared client code as well as adding the viewer; the build/check results
+above cover those changes, not live acceptance. Native input/IME, signed keychain
+persistence and real Mac lifecycle still need the acceptance gates before release.

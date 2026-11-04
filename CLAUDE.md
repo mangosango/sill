@@ -8,11 +8,21 @@ Formerly winstream; the folder still carries the old name.
 
 ## Current step
 
-**Native Mac viewer renderer checkpoint (branch `macos-viewer`).** Implementation of
-`docs/macos-client-plan.md` started, but the foundation is blocked/incomplete:
-`MacClient/HEVCDisplayView.swift` compiles in isolation; no native target or shared
-client port exists yet. See the plan's implementation-progress section for ownership,
-attachment contracts, selective PR #128 credit and validation limits. Nothing shipped.
+**Native Mac viewer (branch `macos-viewer`, not shipped).** The operator approved
+`docs/macos-client-plan.md` and implementation with a Pi subagent swarm. The native
+Sill Viewer target, shared-client platform boundaries, scoped viewer identity,
+connection/pairing UI, renderer, pointer/keyboard/IME input, stream controls, remote
+menus, clipboard/audio adapters and separate universal ZIP packaging are integrated.
+At a4ce755, unsigned Mac Debug/Release (arm64 + x86_64), all three iOS build modes,
+the Swift package and all 66 sequential checks passed. a0790f1 fixes a stale UI test
+to require input release before disconnect; a0156cd corrects a stale clipboard-copy
+assertion. All dedicated offline checks now pass. Bounded full-diff follow-up reviews
+found one input blocker: IME preedit is stored but not shown; its fix is pending.
+No application launch or live acceptance test was performed;
+persistent pairing requires a viewer-specific signed profile, and co-resident
+host/viewer clipboard forwarding is unsupported (warning and sharing switch provided).
+See the plan's integrated-progress section for evidence, deferred release work and
+required two-Mac tests; the older renderer-only checkpoint is superseded.
 
 **Release 0.6.0 (2026-11-02, PR #274 `integrate-0-6` from main at e4d3034, carrying #269 (the version),
 #270 (the tour once more) and #271 (a locked Mac); Noah's go after testing #274's builds: "Test passed,
