@@ -27,7 +27,7 @@ struct SillViewerApp: App {
                 } else {
                     ViewerConnectView(client: client)
                 }
-                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself. Remote Menus are not available in this checkpoint.")
+                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding()
@@ -216,6 +216,7 @@ private struct ViewerControls: View {
                         Text(TextScale.title(at: value)).tag(value)
                     }
                 }.disabled(!client.textScaleSelectable || client.macLocked)
+                RemoteMenus(client: client).fixedSize()
                 Button("Release Input") { releasePicture() }
             }.disabled(client.macLocked)
             DisclosureGroup("Stream Settings") {
