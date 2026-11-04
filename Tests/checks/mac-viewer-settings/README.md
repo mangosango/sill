@@ -6,7 +6,8 @@ Run `Tests/checks/mac-viewer-settings/run.sh` from any directory.
   `HostSettings.swift` module and `HostSettingsLedger.swift`, with a compile-only
   client fixture. Nothing is instantiated or launched; no preferences are read or
   written and no clipboard, keychain or network API is exercised.
-- 31 structural assertions cover pane/toolbar/window configuration (including
+- 34 structural assertions cover the viewer-only reverse-scrolling toggle and
+  pane/toolbar/window configuration (including
   fullscreen-auxiliary placement without minimize/zoom), host-reported home/away
   quality scope and mixed-session explanation, scope/privacy
   copy, retained pending/error/clipboard status, capability gates, input-release

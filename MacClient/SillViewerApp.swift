@@ -173,8 +173,12 @@ private struct ViewerWindowContent: View {
 private struct ViewerPicture: NSViewRepresentable {
     let client: StreamClient
     let input: ViewerInputState
+    @AppStorage("SillViewer.reverseScrolling") private var reverseScrolling = false
     func makeNSView(context: Context) -> ViewerSurface { ViewerSurface(client: client, inputState: input) }
-    func updateNSView(_ view: ViewerSurface, context: Context) { view.refresh() }
+    func updateNSView(_ view: ViewerSurface, context: Context) {
+        view.input.reverseScrolling = reverseScrolling
+        view.refresh()
+    }
     static func dismantleNSView(_ view: ViewerSurface, coordinator: ()) { view.detach() }
 }
 

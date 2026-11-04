@@ -71,6 +71,7 @@ final class MacPreeditLabel: NSTextField {
 /// Keyboard events use either the native text system or the existing HID forwarder.
 final class StreamInputView: NSView, NSTextInputClient {
     weak var inputState: ViewerInputState?
+    var reverseScrolling = false
     var canTakeControl: Bool {
         window?.isKeyWindow == true && client?.connected == true && client?.inputPaused == false && client?.macLocked == false
     }
@@ -342,8 +343,8 @@ final class StreamInputView: NSView, NSTextInputClient {
         lastPoint = point
         let phases = MacPointerGeometry.phases(event.phase, momentum: false) + MacPointerGeometry.phases(event.momentumPhase, momentum: true)
         for phase in phases where phase == .began || phase == .momentumBegan { boundary(phase) }
-        // AppKit already applies the local Natural Scrolling preference. Never synthesize a coast.
-        let unit: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
+        // Reverse AppKit's already-adjusted deltas only on request; never synthesize a coast.
+        let unit: CGFloat = (event.hasPreciseScrollingDeltas ? 1 : 10) * (reverseScrolling ? -1 : 1)
         client?.sendInput(.scroll(x: point.x, y: point.y, dx: event.scrollingDeltaX * unit / picture.width, dy: event.scrollingDeltaY * unit / picture.height))
         for phase in phases where phase == .ended || phase == .momentumEnded { boundary(phase) }
         if phases.contains(.began) { scrolling = true }

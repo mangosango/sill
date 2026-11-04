@@ -21,7 +21,9 @@ It runs the real keyboard-capture manager/dispatcher/watchdog with an in-memory
 Synthetic CGEvents are converted but never posted. Checks cover event suppression/
 pass-through, permission/Secure Input/tap failure, active VoiceOver Control-Option and
 Caps Lock, rebound modifiers/repeats, and ordinary text through `interpretKeyEvents`.
-Debug and optimized builds run; all 52 behavioral mutants must be killed without
+Scroll tests cover default/reversed directions on both axes, precise/coarse deltas,
+unphased wheel events and unchanged gesture/momentum boundaries.
+Debug and optimized builds run; all 57 behavioral mutants must be killed without
 compile errors or invalid edits. This is not physical keyboard/IME/VoiceOver, live
 clipboard, system tap or two-Mac acceptance.
 

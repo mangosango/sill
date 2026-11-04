@@ -2487,8 +2487,10 @@ while controlling it. Candidate panels, physical shortcut/IME delivery and
 assistive-technology behavior still require live acceptance.
 
 **Sill Viewer → Settings…** opens General, Sharing and Remote Mac panes. General
-controls this viewer's mute; Remote Mac settings change the host and can affect
-other devices. The host's reported home/away scope is shown beside Quality and
+controls this viewer's mute and **Reverse scrolling direction**. Scroll reversal is
+off by default, saved for this viewer, and reverses both axes without changing speed,
+momentum or either Mac's system preferences. Use it if remote scrolling feels backwards.
+Remote Mac settings change the host and can affect other devices. The host's reported home/away scope is shown beside Quality and
 Resolution. Source, text size, clipboard transfer, mute and remote menus remain
 available from the session toolbar/menu. Closing the viewer window disconnects;
 opening Settings or changing fullscreen mode does not.

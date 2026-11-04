@@ -26,6 +26,9 @@ assert 'send(.changeSettings' not in app + settings
 assert '.onDisappear' not in app, 'View transitions are not session close'
 assert 'NSWindow.willCloseNotification' in window
 assert 'ViewerSettingsWindowController(client: client' in app
+for source in (app, settings):
+    assert '@AppStorage("SillViewer.reverseScrolling") private var reverseScrolling = false' in source
+assert 'view.input.reverseScrolling = reverseScrolling\n        view.refresh()' in app
 print('viewer-controls: release ordering, scoped settings and clipboard safeguards passed')
 pointer = (root / 'MacClient/StreamInputView.swift').read_text()
 assert 'ViewerSurface(client: client, inputState: input)' in app

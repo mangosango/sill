@@ -49,6 +49,19 @@ final class RecordingKeyboardTap: MacKeyboardTap {
     func stop() { enabled = false; receive = nil }
 }
 
+// No hardware event source: scrollWheel reads only these overridden fields.
+final class RecordingScrollEvent: NSEvent {
+    var precise = true
+    var gesturePhase: NSEvent.Phase = []
+    var coastPhase: NSEvent.Phase = []
+    override var locationInWindow: NSPoint { NSPoint(x: 320, y: 200) }
+    override var hasPreciseScrollingDeltas: Bool { precise }
+    override var scrollingDeltaX: CGFloat { 8 }
+    override var scrollingDeltaY: CGFloat { -12 }
+    override var phase: NSEvent.Phase { gesturePhase }
+    override var momentumPhase: NSEvent.Phase { coastPhase }
+}
+
 // Pretend focus without ordering a window or activating this test process.
 final class InputWindow: NSWindow {
     var pretendsKey = true

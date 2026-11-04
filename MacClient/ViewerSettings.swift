@@ -128,6 +128,7 @@ private struct ViewerSettingsForm: View {
     let pane: ViewerSettingsPane
     let releaseInput: () -> Void
     @AppStorage(StreamClient.clipboardKey) private var sharing = true
+    @AppStorage("SillViewer.reverseScrolling") private var reverseScrolling = false
 
     var body: some View {
         Form {
@@ -147,6 +148,11 @@ private struct ViewerSettingsForm: View {
                     releaseInput(); client.setSoundMuted($0)
                 }))
                 Text("Only silences this viewer. Send Audio in Remote Mac settings affects every connected device, not the remote Mac’s speakers.")
+                    .foregroundStyle(.secondary)
+            }
+            Section("Scrolling") {
+                Toggle("Reverse scrolling direction", isOn: $reverseScrolling)
+                Text("Reverse horizontal and vertical scrolling sent by this viewer. Neither Mac’s system scrolling preference is changed.")
                     .foregroundStyle(.secondary)
             }
             Section("Keyboard and Control") {

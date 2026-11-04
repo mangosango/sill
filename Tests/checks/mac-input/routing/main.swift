@@ -8,6 +8,7 @@ let window = InputWindow(contentRect: CGRect(x: 0, y: 0, width: 640, height: 400
                          styleMask: [.borderless], backing: .buffered, defer: false)
 let client = StreamClient()
 let input = StreamInputView(frame: window.contentView!.bounds)
+precondition(!input.reverseScrolling, "scroll reversal is opt-in")
 window.contentView!.addSubview(input)
 input.client = client
 let tap = RecordingKeyboardTap()
@@ -114,7 +115,38 @@ precondition(client.events == [.pointer(.leftDown, x: 0.1, y: 0.5),
                                .pointer(.leftUp, x: 0.5, y: 0.5)])
 clipboard.reset()
 board.releaseGlobally()
+// Reversal changes both axes, not speed, units or gesture/momentum phase ordering.
+let scroll = RecordingScrollEvent()
+for reverse in [false, true] {
+    input.reverseScrolling = reverse
+    for precise in [false, true] {
+        scroll.precise = precise
+        let unit: Double = (precise ? 1 : 10) * (reverse ? -1 : 1)
+        let delta = InputEvent.scroll(x: 0.5, y: 0.5, dx: 8 * unit / 640, dy: -12 * unit / 400)
+        client.events.removeAll()
+        scroll.gesturePhase = []; scroll.coastPhase = []
+        input.scrollWheel(with: scroll)
+        precondition(client.events == [delta], "unphased wheel events must keep their units")
+        for (phase, momentum, boundary, begins) in [
+            (NSEvent.Phase.began, NSEvent.Phase(), ScrollPhase.began, true),
+            (.ended, [], .ended, false),
+            ([], .began, .momentumBegan, true),
+            ([], .ended, .momentumEnded, false)
+        ] {
+            client.events.removeAll()
+            scroll.gesturePhase = phase
+            scroll.coastPhase = momentum
+            input.scrollWheel(with: scroll)
+            let edge = InputEvent.scrollGesture(boundary, x: 0.5, y: 0.5)
+            precondition(client.events == (begins ? [edge, delta] : [delta, edge]))
+        }
+    }
+}
+input.reverseScrolling = false
+client.events.removeAll()
 ownership.release()
+input.scrollWheel(with: scroll)
+precondition(client.events.isEmpty, "released views do not forward scrolling")
 client.events.removeAll()
 input.mouseMoved(with: mouse(.mouseMoved, at: CGPoint(x: 64, y: 200)))
 precondition(!ownership.controlling && client.events.isEmpty, "hover cannot take control")

@@ -7,6 +7,33 @@ comments that say "CLAUDE.md, Current step" or "the Current step" mean this file
 
 ## Current step
 
+### Viewer reverse-scrolling preference (2026-11-04)
+
+Committed the preceding native viewer UX/click-to-control/system-key capture work as
+`f4daaba`, excluding unrelated skill-installation files. Sang then requested a scroll
+direction override for local trackpad/remote mouse setups.
+
+Added Settings → General → Scrolling → Reverse scrolling direction, off by default.
+The viewer-scoped `SillViewer.reverseScrolling` AppStorage preference is shared by the
+Settings form and native-picture bridge; changes update the input view without a
+reconnect and survive app relaunch through standard preference storage. One signed
+multiplier reverses horizontal/vertical deltas while preserving precise/coarse units,
+coordinates, phase ordering and momentum. No host/protocol/iOS changes and neither
+Mac's system scrolling preference is altered. Opening Settings already releases input
+and closes any active scroll before the user changes direction.
+
+Verified: unsigned universal Mac Debug/Release; Debug/optimized real input-handler
+tests for default/reversed axes, mouse/trackpad units, unphased wheel events, gesture/
+momentum boundaries and released-input refusal. All **57 input mutants** killed,
+including five new scroll mutants; settings/window/controls checks and 12 window
+mutants passed. Storage-key/default and live bridge wiring have structural guards.
+Logs: `/tmp/sill-scroll-direction-*.log`. The agent did not launch, sign or replace
+the user's app, write preferences or install a real event tap during verification.
+Sang subsequently reported that key capture and reverse scrolling seem good in
+manual testing. This confirms those basic live behaviors, not the full acceptance
+matrix: permission transitions, Secure Input, VoiceOver, sleep/wake and preference
+restoration across an actual app relaunch remain unconfirmed.
+
 ### Viewer system-key capture — implemented, signed/manual acceptance pending (2026-11-04)
 
 Sang approved Accessibility permission for full keyboard control and deferred Mission
