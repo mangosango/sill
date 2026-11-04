@@ -1,6 +1,7 @@
 # Sill Viewer for macOS
 
-Status: proposed; planning only. No app or protocol changes made.
+Status: implementation started; renderer checkpoint only. No runnable Mac target yet.
+The original phase-1/phase-3 foundation assignment is blocked, not complete.
 
 ## Goal
 
@@ -320,6 +321,83 @@ Deferred: multiple simultaneous remote Macs/windows, side streams, monitor selec
 file transfer, image clipboard, remote Dock integration, global shortcut capture,
 host speaker muting, new virtual-display behavior, Windows/Linux hosts and CloudKit
 pairing. None is necessary to deliver the requested Mac-to-Mac remote desktop.
+
+## Implementation progress: renderer checkpoint
+
+The implementation supervisor narrowed this worker first to phase 1, then to an
+independently compiled native renderer because the worker's remaining execution
+context could not safely complete the shared-client port. This is **not** a
+completed foundation or permission to begin dependent feature lanes against a
+working viewer. Resume the foundation before integrating them.
+
+Implemented `MacClient/HEVCDisplayView.swift`: an AppKit NSView backed by
+AVSampleBufferDisplayLayer. Its AppKit geometry and cursor surface are selectively
+adapted from Alexander Deutsch's PR #128, `173843be`; parameter-set caching,
+frame/sample construction, lock blanking, format reset, decoder notifications,
+stale-notification filtering and ordered recovery callbacks follow current main's
+iPad renderer. No #66 source, host, wire, shared runtime or identity code changed.
+The iPad DEBUG decoder-fault injector and HUD were not ported.
+
+Validation: `Scripts/mac-renderer-check/run.sh` builds the real StreamProtocol
+sources and renderer in Swift 5 Debug/Release modes with a compile-only
+`StreamClient.CursorShape` fixture, and runs five letterbox geometry checks.
+It never constructs a view, opens a window, decodes video or accesses network,
+preferences, keychain or pasteboard. On Xcode 27.2 both modes passed targeting
+macOS 14. An initial build at the compiler's default deployment target emitted
+macOS-15 deprecation warnings for AVSampleBufferDisplayLayer's APIs; the final
+macOS-14 build is clean (those APIs are retained for macOS 14 compatibility). `Tests/checks/keyframe-recovery/run.sh`: 95 checks passed.
+This proves neither actual frame rendering nor recovery under a live decoder.
+No Mac app build or iOS app build was run at this checkpoint.
+
+### Resume foundation first (integration owner)
+
+- Add the native target and shared scheme; the renderer needs a **Mac target only**
+  PBXFileReference, PBXBuildFile, MacClient group entry and PBXSourcesBuildPhase
+  entry for `MacClient/HEVCDisplayView.swift`. Do not add the check's fixture to
+  either target. No Xcode project entries have been added yet.
+- Compile current StreamClient/Home/Remote/Viewport and their actual policy
+  dependencies through explicit image/device/lifecycle boundaries, not fake
+  UIApplication/UIScene types. The eventual Mac `StreamClient.CursorShape.image`
+  must be NSImage; the renderer otherwise keeps today's method signatures.
+- Assign `renderQueue` before receiving data; call apply/enqueue/blank/clear and
+  checkLayer on that queue. Wire onNeedsKeyframe/onPictureBack to the current
+  KeyframeRecovery path, onVideoSize to client.videoSize, and
+  onVideoSizeForPointer to pointerFrameChanged. On main wire cursor/pointer
+  callbacks to setCursorShape/setPointer and attach the single view beneath the
+  native input surface. The view intentionally takes no hit tests.
+- Own real Mac sleep/visibility recovery separately from input focus. Inactive
+  visible windows must keep receiving/rendering. No lifecycle adapter exists yet.
+- Retain current trust/reconnect/pairing rules, fail-closed identity read-back and
+  transient-error retention. Add viewer-only tags and explicit data-protection
+  queries on macOS; never import #128's clipboard or application-state shims.
+- Omit codec advertisement and clipboard subscription until the media lane has
+  real adapters. No unavailable-feature stubs were added by this checkpoint.
+- Pass unsigned Mac Debug/Release and iOS simulator Debug builds before calling
+  this foundation ready. Real synthetic-loopback rendering remains untested.
+
+### Following lane ownership (after resumed foundation)
+
+1. **Native input/UI:** own new MacClient app/connect/stream/input views and Mac
+   input policies/checks. Implement attachment, focus/release, viewport reporting,
+   source/settings/menus UI and polished typed/confirmed-link pairing. Do not
+   alter shared transport/trust or media adapters without integration review.
+2. **Clipboard/audio:** own MacClient media adapters and shared
+   StreamClient+Clipboard/Audio boundaries. Preserve receipt, provenance,
+   local-only/owned-expiry and current AAC-ELD rules. Advertise capabilities only
+   after real implementations; no preferences/keychain/pasteboard smoke tests on
+   this working Mac. Coordinate shared StreamClient property changes with the
+   integration owner rather than overlapping native UI edits.
+3. **Packaging/CI/docs/tests:** own viewer plist, signing/profile checks, package
+   scripts, workflows and public documentation. Own Xcode source registration:
+   each new Swift file from either lane needs its file reference, build file,
+   MacClient group and Mac Sources entry, and shared files need a Mac build file
+   referring to their existing iOS file reference. Mac-only files never enter the
+   iOS Sources phase. Lane authors must supply exact new filenames in handoffs;
+   no speculative source entries or target file lists are established here.
+
+Only the integration owner edits shared StreamClient lifecycle/trust and the
+project while foundation resumes. This ownership list is a handoff boundary,
+not a claim that the three lanes can start independently at this checkpoint.
 
 ## Decisions to confirm before implementation
 

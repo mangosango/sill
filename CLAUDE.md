@@ -8,6 +8,12 @@ Formerly winstream; the folder still carries the old name.
 
 ## Current step
 
+**Native Mac viewer renderer checkpoint (branch `macos-viewer`).** Implementation of
+`docs/macos-client-plan.md` started, but the foundation is blocked/incomplete:
+`MacClient/HEVCDisplayView.swift` compiles in isolation; no native target or shared
+client port exists yet. See the plan's implementation-progress section for ownership,
+attachment contracts, selective PR #128 credit and validation limits. Nothing shipped.
+
 **Release 0.6.0 (2026-11-02, PR #274 `integrate-0-6` from main at e4d3034, carrying #269 (the version),
 #270 (the tour once more) and #271 (a locked Mac); Noah's go after testing #274's builds: "Test passed,
 merge please. Do phases 1 through 3").** One version for both apps, as since 0.5.1: Sill for Mac 0.6.0
