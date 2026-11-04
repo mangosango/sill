@@ -19,8 +19,10 @@ README, DEVELOPMENT, SECURITY and the release checklist. No viewer app launch or
 live acceptance was performed. Persistent pairing requires a viewer-specific signed
 profile; co-resident clipboard forwarding and recursive viewing are unsupported.
 Synthetic integration, real AppKit/IME/VoiceOver/media, signed/quarantine/update and
-two-Mac acceptance remain open, with independent review still required. Host/iOS
-shipped instructions and public download links are unchanged.
+two-Mac acceptance remain open. Independent read-only review of `e40d8d8..88347ab`
+and connected sources found no issues in packaging, tests or preview documentation;
+it did not rerun builds/tests or establish live/signed acceptance. Host/iOS shipped
+instructions and public download links are unchanged.
 
 **Release 0.6.0 (2026-11-02, PR #274 `integrate-0-6` from main at e4d3034, carrying #269 (the version),
 #270 (the tour once more) and #271 (a locked Mac); Noah's go after testing #274's builds: "Test passed,

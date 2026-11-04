@@ -407,8 +407,14 @@ operator gates; the scripts do not perform them.
   DEVELOPMENT, README, SECURITY and the release checklist. Public site pages remain
   about shipped apps; no viewer download link or release promise was added.
   This documentation pass ran offline syntax/link/consistency checks only, not new
-  builds or live acceptance. Packaging and mutation diffs still need independent
-  review. Reported free disk for both implementation slices and this pass: 128 GiB.
+  builds or live acceptance. Reported free disk for both implementation slices and
+  this pass: 128 GiB.
+- Independent read-only review inspected the committed `e40d8d8..88347ab` diff and
+  connected sources: no issues found, OK with notes for packaging, mutation tests
+  and preview documentation. It did not independently run the reported tests or
+  inspect built artifacts; this is not live or signed release acceptance. The
+  supervisor confirmed the committed file scope and clean tree, with `git diff
+  --check` passing.
 
 ### Still required before calling it ready
 
