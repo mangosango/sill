@@ -23,8 +23,97 @@ enum MacPointerGeometry {
 
 #if !POINTER_POLICY_TEST
 /// Attach above the existing renderer with identical bounds; call refresh when client state changes.
-/// This surface deliberately implements no keyboard or text-input handling.
-final class StreamInputView: NSView {
+/// Keyboard events use either the native text system or the existing HID forwarder.
+final class StreamInputView: NSView, NSTextInputClient {
+    private var keys = MacKeyForwarder()
+    private var composition = TextComposition()
+    private var interpreting: NSEvent?
+    private func emit(_ events: [InputEvent]) { for event in events { client?.sendInput(event) } }
+    private func emitText(_ outputs: [TextComposition.Output]) {
+        for output in outputs {
+            switch output {
+            case .text(let text): client?.sendInput(.text(text))
+            case .backspaces(let count):
+                for _ in 0..<count { emit(KeyChord.press(0x2A, with: [])) }
+            }
+        }
+        inputContext?.invalidateCharacterCoordinates()
+    }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard enabled, !MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags)
+                || MacKeyForwarder.releasesKeyboard(keyCode: event.keyCode, modifiers: event.modifierFlags) else { return false }
+        guard event.modifierFlags.contains(.command) else { return false }
+        keyDown(with: event)
+        return true
+    }
+    override func keyDown(with event: NSEvent) {
+        guard enabled else { return }
+        if MacKeyForwarder.releasesKeyboard(keyCode: event.keyCode, modifiers: event.modifierFlags) {
+            releaseInput(); window?.makeFirstResponder(nil); return
+        }
+        guard !MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags) else {
+            releaseInput(); super.keyDown(with: event); return
+        }
+        if (event.isARepeat && MacKeyForwarder.usage(forKeyCode: event.keyCode).map { keys.down.contains($0) } == true) || MacKeyForwarder.rawKey(event, composing: composition.isComposing, hostKeyRepeat: client?.hostKeyRepeat) {
+            emitText(composition.forget())
+            emit(keys.keyDown(event, hostKeyRepeat: client?.hostKeyRepeat))
+        } else {
+            interpreting = event
+            interpretKeyEvents([event])
+            interpreting = nil
+        }
+    }
+    override func keyUp(with event: NSEvent) { emit(keys.keyUp(event)) }
+    override func flagsChanged(with event: NSEvent) {
+        guard enabled else { return }
+        if MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags) {
+            emit(keys.releaseAll()); return
+        }
+        // Text input owns option/shift for dead keys and composition; raw downs carry their flags.
+        if !composition.isComposing { emit(keys.flagsChanged(event)) }
+    }
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        guard enabled else { return }
+        let text = (string as? NSAttributedString)?.string ?? (string as? String ?? "")
+        if replacementRange.location == NSNotFound { emitText(composition.insert(text)) }
+        else { emitText(composition.replace(replacementRange, with: text)) }
+    }
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        guard enabled else { return }
+        if replacementRange.location != NSNotFound, !composition.isComposing { composition.select(replacementRange) }
+        emitText(composition.setMarked((string as? NSAttributedString)?.string ?? (string as? String ?? ""), selected: selectedRange))
+    }
+    func unmarkText() { emitText(composition.unmark()) }
+    func hasMarkedText() -> Bool { composition.isComposing }
+    func markedRange() -> NSRange { composition.markedRange ?? NSRange(location: NSNotFound, length: 0) }
+    func selectedRange() -> NSRange { composition.selectedRange }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+        let document = composition.document as NSString
+        guard range.location != NSNotFound, range.location <= document.length else { return nil }
+        let valid = NSIntersectionRange(range, NSRange(location: 0, length: document.length))
+        actualRange?.pointee = valid
+        return NSAttributedString(string: document.substring(with: valid))
+    }
+    func characterIndex(for point: NSPoint) -> Int { composition.selectedRange.location }
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        actualRange?.pointee = composition.selectedRange
+        return window?.convertToScreen(convert(NSRect(x: bounds.midX, y: bounds.minY, width: 1, height: 20), to: nil)) ?? .zero
+    }
+    override func doCommand(by selector: Selector) {
+        guard enabled else { return }
+        if selector == #selector(NSResponder.deleteBackward(_:)) { emitText(composition.deleteBackward()); return }
+        guard let event = interpreting else { return }
+        emitText(composition.forget())
+        if MacKeyForwarder.usage(forKeyCode: event.keyCode) != nil {
+            emit(keys.keyDown(event, hostKeyRepeat: client?.hostKeyRepeat))
+        } else if selector == #selector(NSResponder.insertNewline(_:)) {
+            client?.sendInput(.text("\n"))
+        } else if selector == #selector(NSResponder.insertTab(_:)) {
+            client?.sendInput(.text("\t"))
+        }
+    }
+
     var client: StreamClient? {
         willSet { releaseInput() }
         didSet {
@@ -86,8 +175,11 @@ final class StreamInputView: NSView {
         if !enabled { releaseInput() }
         window?.invalidateCursorRects(for: self)
     }
-    /// Later keyboard integration must release its held keys here too, before changing client.
     func releaseInput() {
+        if client?.connected == true, client?.inputPaused == false { emitText(composition.forget()) }
+        emit(keys.releaseAll())
+        composition = TextComposition()
+        inputContext?.discardMarkedText()
         for button in held.sorted() { send(button == 0 ? .leftUp : .rightUp, at: lastPoint) }
         held.removeAll()
         if scrolling { boundary(.ended) }
@@ -107,6 +199,7 @@ final class StreamInputView: NSView {
               let point = location(event) else { return }
         window?.makeFirstResponder(self)
         guard enabled, held.insert(button).inserted else { return }
+        emitText(composition.forget())
         lastPoint = point
         send(button == 0 ? .leftDown : .rightDown, at: point)
     }

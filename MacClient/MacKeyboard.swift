@@ -99,6 +99,22 @@ struct MacKeyForwarder {
         return NSEvent.ModifierFlags(rawValue: bit)
     }
 
+    /// Only known direct layouts delegate character repetition; other layouts keep native dead keys.
+    static func rawKey(_ event: NSEvent, composing: Bool, hostKeyRepeat: Int?) -> Bool {
+        guard !composing, let usage = usage(forKeyCode: event.keyCode) else { return false }
+        if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) { return true }
+        if usage >= 0x3A && usage <= 0x52 { return true }
+        guard (hostKeyRepeat ?? 0) >= 1, !event.modifierFlags.contains(.option),
+              let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let ascii = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsASCIICapable),
+              let type = TISGetInputSourceProperty(source, kTISPropertyInputSourceType),
+              let identifier = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return false }
+        let sourceID = Unmanaged<CFString>.fromOpaque(identifier).takeUnretainedValue() as String
+        guard ["com.apple.keylayout.US", "com.apple.keylayout.ABC"].contains(sourceID) else { return false }
+        return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(ascii).takeUnretainedValue())
+            && (Unmanaged<CFString>.fromOpaque(type).takeUnretainedValue() as String) == (kTISTypeKeyboardLayout as String)
+    }
+
     static let capsLock: UInt16 = 0x39
 
     /// A virtual key (kVK_…) as its HID usage, for every key the host maps back

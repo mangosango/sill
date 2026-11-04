@@ -27,7 +27,7 @@ struct SillViewerApp: App {
                 } else {
                     ViewerConnectView(client: client)
                 }
-                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself. Keyboard input and Remote Menus are not available in this checkpoint.")
+                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself. Remote Menus are not available in this checkpoint.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding()
@@ -224,7 +224,7 @@ private struct ViewerControls: View {
             if let problem = client.settingsProblem { Text(problem).foregroundStyle(.red).textSelection(.enabled) }
             Toggle("Share Clipboard", isOn: $sharing)
                 .onChange(of: sharing) { _ in releasePicture(); client.clipboardSwitchChanged() }
-            Text("Warning: a Sill host running on this Mac may forward received clipboard text to its devices. Turn sharing off to prevent viewer clipboard transfers. When keyboard input is implemented, remote Command-V will use the remote clipboard; it will not transfer local text.")
+            Text("Warning: a Sill host running on this Mac may forward received clipboard text to its devices. Turn sharing off to prevent viewer clipboard transfers. Remote Command-V uses the remote clipboard; it does not transfer local text.")
                 .font(.caption).foregroundStyle(.secondary)
             Button("Transfer Local Text to Remote Clipboard") { releasePicture(); client.transferLocalClipboard() }
                 .disabled(!sharing || client.macLocked || !ClipboardPolicy.hostTakes(client.hostClipboard))
