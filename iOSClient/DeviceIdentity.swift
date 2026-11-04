@@ -17,8 +17,16 @@ import StreamProtocol
 /// Main thread, or the network queue once made: the identity is immutable and cached.
 enum DeviceIdentity {
     #if os(macOS)
-    // Packaging must authorize this exact viewer-only group; unsigned builds fail closed.
-    static let accessGroup = "9B2KKVM937.me.saffer.sill.viewer"
+    // Read build configuration, never preferences; invalid configuration cannot select a host group.
+    static let accessGroup: String = {
+        guard let bundle = Bundle.main.bundleIdentifier,
+              bundle.lowercased() != "me.saffer.sill.mac", bundle.lowercased() != "me.saffer.sill",
+              let group = Bundle.main.object(forInfoDictionaryKey: "SillViewerKeychainGroup") as? String,
+              String(group.dropFirst(11)) == bundle,
+              group.range(of: #"^[A-Z0-9]{10}\.[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)+$"#, options: .regularExpression) != nil
+        else { return "invalid.sill.viewer.configuration" }
+        return group
+    }()
     static let tag = Data("me.saffer.sill.viewer.device-key".utf8)
     #else
     static let tag = Data("me.saffer.sill.device-key".utf8)

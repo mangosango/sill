@@ -1359,15 +1359,35 @@ unsigned viewer artifacts are build evidence, not notarized downloads.
    two-Mac tests: Desktop first, window selection, release/focus, physical keyboard,
    IME candidates, VoiceOver, sound/device changes, sleep/wake and long sessions.
    Do not call detached assertions callback-delivery or network-no-emission proof.
-2. Operator only, outside an offline documentation run: obtain a viewer-specific
-   macOS Developer ID profile for `me.saffer.sill.viewer`, team `9B2KKVM937`, granting
-   `Packaging/SillViewer.entitlements`, with the actual signing certificate and an
-   unexpired profile. The host profile cannot be reused. With real paths/identity
-   supplied by the operator, the existing command is:
+2. Operator only, outside an offline documentation run: choose a distinct viewer
+   bundle ID and register an explicit macOS App ID under your Apple Developer team
+   (Certificates, Identifiers & Profiles → Identifiers → App IDs). Sang registered
+   `com.sanglee.sill.viewer` under team `RPKWZLZ8NN` and supplied the matching
+   Developer ID profile; his signed two-Mac tests are in docs/macos-client-plan.md.
+   In Profiles, create a **macOS Developer ID** provisioning profile for that
+   explicit viewer App ID, select the intended Developer ID Application certificate,
+   generate and download it to a local path outside the repository. It must grant
+   the resolved application identifier, team and viewer-only keychain group from
+   `Packaging/SillViewer.entitlements`, be unexpired and include the actual signer.
+   The existing iOS wildcard profiles and the host's macOS profile cannot be reused.
+   Without this profile, unsigned builds can be inspected but persistent pairing
+   remains unavailable. No registration, generation or signing was done offline.
+
+   With Sang's downloaded profile (other developers must use their own matching
+   team, registered bundle ID, signing identity and profile path):
 
    ```sh
-   bash Scripts/make-viewer.sh --developer-id "$VIEWER_SIGN_IDENTITY" "$VIEWER_PROFILE"
+   SILL_VIEWER_TEAM=RPKWZLZ8NN SILL_VIEWER_BUNDLE_ID=com.sanglee.sill.viewer \
+     bash Scripts/make-viewer.sh --developer-id \
+     'Developer ID Application: Sang Jin Lee (RPKWZLZ8NN)' \
+     "$HOME/Downloads/SillViewer-DeveloperID.provisionprofile"
    ```
+
+   The default upstream invocation is unchanged:
+   `bash Scripts/make-viewer.sh --developer-id "$VIEWER_SIGN_IDENTITY" "$VIEWER_PROFILE"`
+   (team `9B2KKVM937`, bundle `me.saffer.sill.viewer`). The overrides never change
+   host/iOS signing. Keep downloaded profiles and generated entitlements untracked;
+   resolved packaging files live only in a temporary `.build/viewer/package.*` folder.
 
    `--adhoc` is a separate local build mode without pairing entitlements, not a
    substitute for this gate. The script checks profile grants, expiry, signer,

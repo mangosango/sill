@@ -1,5 +1,12 @@
 # Pure checks
 
+The viewer's `mac-input` suite also runs an AppKit routing fixture in unshown windows,
+with a recording client and a private pasteboard (no network, visible UI or desktop
+input injection). It checks Command-modified key-up delivery, window isolation, focus
+cleanup and a drag across a clipboard write. It runs in Debug and optimized builds;
+its 20 mutants include two of the routing regressions. This is not a live clipboard
+or two-Mac interaction test.
+
 The parts of Sill that decide things (when the device looks for a Mac and which path a session
 takes, the settings ledger, the wire format, what of the clipboard goes between the Mac and a device, pairing, who may use which door, which device versions a
 Mac serves, what a locked Mac shows and lets a device do, what the Mac does with a trackpad gesture, how a session ends, how the device reads the

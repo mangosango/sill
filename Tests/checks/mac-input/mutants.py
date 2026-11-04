@@ -1,6 +1,6 @@
 """Sequential behavioral mutations of native input code, always in scratch copies.
 Compile failures and unapplied edits fail the run; neither counts as a kill.
-The policy harness does not compile StreamInputView's client/responder callbacks.
+The routing harness compiles the real input view with a recording client and hidden windows.
 """
 from pathlib import Path
 import subprocess
@@ -26,6 +26,8 @@ MUTANTS = [
     ('I2 selection highlight absent', 'input', VIEW, 'if selection.length > 0 {', 'if false {'),
     ('I3 cleared label retains text', 'input', VIEW, 'attributedStringValue = NSAttributedString(string: "")', '// retain stale text'),
     ('I4 preedit takes focus', 'input', VIEW, 'override var acceptsFirstResponder: Bool { false }', 'override var acceptsFirstResponder: Bool { true }'),
+    ('R1 swallowed Command keyUp', 'routing', VIEW, 'let ups = self.keys.keyUp(event)', 'let ups: [InputEvent] = []'),
+    ('R2 other window keyUp', 'routing', VIEW, 'event.window === window else { return event }', 'true else { return event }'),
     ('P1 letterbox accepts pointer', 'pointer', VIEW, 'clamp || rect.contains(point)', 'true'),
     ('P2 horizontal origin ignored', 'pointer', VIEW, '(point.x - rect.minX) / rect.width', 'point.x / rect.width'),
     ('P3 vertical fraction inverted', 'pointer', VIEW, '(point.y - rect.minY) / rect.height', '1 - (point.y - rect.minY) / rect.height'),
@@ -59,9 +61,16 @@ def check(name, harness, source=None, old=None, new=None):
             text = text.replace(old, new, 1)
         paths[relative] = folder / Path(relative).name
         paths[relative].write_text(text)
-    args = ['swiftc', '-swift-version', '5', '-Onone', '-D', 'POINTER_POLICY_TEST',
+    args = ['swiftc', '-swift-version', '5', '-Onone',
             '-I', OUT, '-L', OUT, '-lStreamProtocol', '-Xlinker', '-rpath', '-Xlinker', OUT]
-    if harness == 'input':
+    if harness != 'routing':
+        args += ['-D', 'POINTER_POLICY_TEST']
+    if harness == 'routing':
+        args += [paths[KEY], ROOT / 'MacClient/MacClipboard.swift',
+                 ROOT / 'iOSClient/KeyChords.swift', ROOT / 'iOSClient/TextComposition.swift',
+                 ROOT / 'Tests/checks/mac-input/routing/Fixture.swift',
+                 ROOT / 'Tests/checks/mac-input/routing/main.swift']
+    elif harness == 'input':
         args += ['-D', 'MAC_INPUT_TEST', '-D', 'DEBUG', paths[KEY],
                  ROOT / 'iOSClient/KeyChords.swift', ROOT / 'iOSClient/TextComposition.swift',
                  ROOT / 'Tests/checks/mac-input/main.swift']
@@ -75,7 +84,7 @@ def check(name, harness, source=None, old=None, new=None):
     return 'killed' if code in (-4, -5, -6) else ('survived' if code == 0 else 'runtime-error')
 
 
-for harness in ('input', 'pointer'):
+for harness in ('input', 'pointer', 'routing'):
     if check('baseline-' + harness, harness) != 'survived':
         sys.exit('baseline failed: ' + harness)
 counts = dict.fromkeys(['attempted', 'killed', 'survived', 'not-applied', 'compile-error', 'runtime-error'], 0)

@@ -2470,6 +2470,30 @@ Unsigned/ad-hoc builds cannot establish persistent pairing acceptance. A matchin
 viewer-specific macOS Developer ID profile and entitlements are required; the
 host profile is not a substitute. No such credentials are supplied here.
 
+Viewer-only overrides are `SILL_VIEWER_TEAM` and `SILL_VIEWER_BUNDLE_ID`; defaults
+remain `9B2KKVM937` and `me.saffer.sill.viewer`. They configure only the viewer
+target, its Info.plist keychain group and the package's resolved entitlements.
+The key tags stay viewer-only. Changing team or bundle selects a different
+Keychain group; changing the bundle also selects a different preferences domain.
+Existing pairings are not migrated.
+Neither a user preference nor an unsigned/ad-hoc build can authorize that group.
+
+Sang registered `com.sanglee.sill.viewer` under team `RPKWZLZ8NN` and supplied a
+matching Developer ID profile. An offline unsigned build still needs no profile:
+
+```sh
+SILL_VIEWER_TEAM=RPKWZLZ8NN SILL_VIEWER_BUNDLE_ID=com.sanglee.sill.viewer \
+  bash Scripts/make-viewer.sh
+```
+
+This builds but cannot pair persistently. The local Apple Development certificate
+`Apple Development: Sang Lee (P98L3C59U4)` alone is not a Developer ID profile.
+The current Xcode target does not attach privileged pairing entitlements by
+default; automatic signing alone is not a documented working pairing route.
+Use the Developer ID procedure in the release checklist with the matching macOS
+profile; iOS profiles are not suitable. Sang completed that procedure and manually
+verified two-Mac operation (docs/macos-client-plan.md).
+
 Offline build/package (Xcode 27.1 or later in the 27 series; at least 25 GB free):
 
 ```sh
