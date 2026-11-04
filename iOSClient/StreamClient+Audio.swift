@@ -1,7 +1,11 @@
 import Foundation
 import QuartzCore
 import StreamProtocol
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 
 // MARK: - The Mac's sound (docs/audio-plan.md §7.5)
 
@@ -36,7 +40,12 @@ extension StreamClient {
     func headphonesOut() {
         guard !soundMuted else { return }
         setSoundMuted(true)
+        #if os(macOS)
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: "Sound muted: output disconnected.", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+        #else
         UIAccessibility.post(notification: .announcement, argument: "Sound muted: headphones disconnected.")
+        #endif
     }
 
     /// A kind 43 on the session's connection, handed to the sound's queue as it came. On `queue`.

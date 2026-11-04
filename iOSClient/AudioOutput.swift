@@ -2,7 +2,11 @@ import AVFAudio
 import Foundation
 import QuartzCore
 import StreamProtocol
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 
 /// The Mac's sound on this device (docs/audio-plan.md §7.3, §7.4): kind 43's formats and packets in,
 /// through the playout model (AudioPlayout, which decides) and the decoder (AudioDecoder), onto an
@@ -29,6 +33,11 @@ import UIKit
 /// where each click of the test tone was heard. DEBUG `-SillSoundVolume 0` sets the player's volume to
 /// 0 besides. (`-SillSoundSink device` in a DEBUG simulator build opens the output, for a person at
 /// the simulator who wants to hear it.)
+///
+/// On macOS there is no AVAudioSession: HAL supplies the default output's name and IO duration,
+/// the player supplies downstream presentation latency, and output/configuration changes rebuild the
+/// engine. System sleep silences it, not focus loss; assembly must pass window visibility (not key
+/// window/application activation) to `setSceneForeground`.
 ///
 /// Threads: the client hands everything over from the network queue (formats, packets, frames,
 /// stamped there) and the main thread (mute, the session, the route); the player's completion handlers
@@ -100,9 +109,36 @@ final class AudioOutput {
     /// of its own, and a block-based observer stays registered until it is removed.
     private var observers: [NSObjectProtocol] = []
 
+    #if os(macOS)
+    private var macDevice: MacAudioDevice?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    #endif
+
     init(refresh: Double) {
         self.refresh = refresh
         let center = NotificationCenter.default
+        #if os(macOS)
+        // Inactive windows still play; only system sleep suspends the app's output.
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspaceObservers.append(workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.queue.async { self?.appForeground = false; self?.foregroundChanged() }
+        })
+        workspaceObservers.append(workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.queue.async { self?.appForeground = true; self?.activationBlocked = false; self?.foregroundChanged() }
+        })
+        if SoundEngine.sinkFromLaunchArguments == .device {
+            macDevice = MacAudioDevice(queue: queue) { [weak self] disconnected in
+                guard let self else { return }
+                if disconnected, self.sessionLive, !self.muted, self.foreground, self.lastPacketAt != nil {
+                    self.muted = true
+                    DispatchQueue.main.async { [weak self] in self?.onRouteMuted?() }
+                }
+                self.activationBlocked = false
+                self.updateSilence()
+                self.stopEngine(reason: "the output device changed")
+            }
+        }
+        #else
         observers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil) { [weak self] _ in
             self?.queue.async { self?.appForeground = false; self?.foregroundChanged() }
         })
@@ -121,6 +157,7 @@ final class AudioOutput {
         observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil) { [weak self] _ in
             self?.queue.async { self?.servicesReset() }
         })
+        #endif
         // The output's format changed (a route at another rate, Bluetooth's call profile, another app
         // changing the session's rate): the engine has stopped and uninitialized itself. Never torn
         // down in the handler (Apple: it can deadlock there): on `queue`.
@@ -136,6 +173,9 @@ final class AudioOutput {
     deinit {
         let center = NotificationCenter.default
         for o in observers { center.removeObserver(o) }
+        #if os(macOS)
+        for o in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        #endif
         deadlineTimer?.cancel()
         secondTimer?.cancel()
     }
@@ -496,6 +536,7 @@ final class AudioOutput {
         stopEngine(reason: "the output's configuration changed")
     }
 
+    #if !os(macOS)
     private func interrupted(_ note: Notification) {
         guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
@@ -555,6 +596,8 @@ final class AudioOutput {
         print("audio: route \(before.route) → \(e.routeName) (\(change >= 0 ? "+" : "")\(Int((change * 1000).rounded())) ms)")
         #endif
     }
+
+    #endif
 
     private func servicesReset() {
         // Every object of the old media services is gone: the next packet builds a new engine and session.
@@ -667,17 +710,21 @@ private final class SoundEngine {
             running = true
             return .success
         }
+        #if !os(macOS)
         do {
             try SharedSession.take()
         } catch {
             return .failure("the audio session: \(error.localizedDescription)")
         }
+        #endif
         engine.connect(player, to: engine.mainMixerNode, format: format)
         engine.prepare()
         do {
             try engine.start()
         } catch {
+            #if !os(macOS)
             SharedSession.give()
+            #endif
             return .failure("the engine: \(error.localizedDescription)")
         }
         holdsSession = true
@@ -717,7 +764,9 @@ private final class SoundEngine {
     private func giveSession() {
         guard holdsSession else { return }
         holdsSession = false
+        #if !os(macOS)
         SharedSession.give()
+        #endif
     }
 
     /// The player's timeline: a sample of it and the device time it goes out at.
@@ -736,13 +785,29 @@ private final class SoundEngine {
     /// downstream if more. That one includes the output's own presentation latency (AVAudioNode.h),
     /// which is what the session reports: added to it, it counted the device twice.
     var outputLatency: Double {
-        manual ? Self.standInOutput : max(AVAudioSession.sharedInstance().outputLatency, player.outputPresentationLatency)
+        #if os(macOS)
+        return manual ? Self.standInOutput : player.outputPresentationLatency
+        #else
+        return manual ? Self.standInOutput : max(AVAudioSession.sharedInstance().outputLatency, player.outputPresentationLatency)
+        #endif
     }
 
-    var ioBuffer: Double { manual ? Self.standInIO : AVAudioSession.sharedInstance().ioBufferDuration }
+    var ioBuffer: Double {
+        if manual { return Self.standInIO }
+        #if os(macOS)
+        return MacAudioDevice.bufferDuration
+        #else
+        return AVAudioSession.sharedInstance().ioBufferDuration
+        #endif
+    }
 
     var routeName: String {
-        manual ? "manual rendering (no output device)" : AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "no output"
+        if manual { return "manual rendering (no output device)" }
+        #if os(macOS)
+        return MacAudioDevice.name
+        #else
+        return AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "no output"
+        #endif
     }
 
     func schedule(left: [Float], right: [Float], at: Double?) {
@@ -777,6 +842,7 @@ private final class SoundEngine {
 /// AudioOutput): active while any of them plays on the device. Deactivating it stops every engine's I/O,
 /// running or not (AVAudioSession.h), so it goes only when the last one stops. The lock is held across
 /// the session's calls, so one window's deactivation never lands after another's activation.
+#if !os(macOS)
 private enum SharedSession {
     private static let lock = NSLock()
     private static var engines = 0
@@ -802,6 +868,8 @@ private enum SharedSession {
         }
     }
 }
+
+#endif
 
 /// AVAudioPCMBuffers of the player's format, a packet and a frame long (a frame gained fits), 32 to
 /// start and more when all are out (the guard has no bound, and a picture a second late holds a
