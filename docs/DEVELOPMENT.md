@@ -2447,14 +2447,51 @@ paired with the other. `swift Scripts/asc.swift groups --key-file … --key-id �
 `iOSClient/Sill.xcodeproj`, using the existing shared client sources, not a new
 host or wire protocol. One app-owned session serves one viewer window; it asks
 for the Desktop first, then permits picking a window. This is an **unreleased
-source preview**, not real-Mac validation. The shipped download remains the host.
+source preview**. Earlier signed two-Mac tests cover the pre-redesign viewer;
+the new interface still requires manual acceptance. The shipped download remains
+the host. Design and acceptance details: [native viewer UX](macos-viewer-ux-plan.md).
+
+The start screen lists paired Macs and Macs available to pair. Use **Add Mac…**
+for an address or pairing link, or **Search Nearby** for a Mac advertising Direct
+Wireless Connection. A saved Mac not found nearby can be reached with **Connect
+Remotely** when its host has Remote Access enabled; absence from the local list
+does not prove it is offline.
 
 The remote Mac still runs Sill for Mac and grants that host Screen Recording and
-Accessibility. The viewer does not need those grants to receive video and send
-input from its focused picture. Local Command-Q and accessibility Control-Option
-chords stay local; Command-Control-Option-K releases the keyboard locally.
-Release Input also relinquishes picture input. Candidate panels, physical input
-and assistive-technology behavior still require live acceptance.
+Accessibility. The viewer never needs Screen Recording; viewing needs neither grant.
+**Keyboard control now requires Accessibility permission on the viewer Mac**, following
+Sang's approval of system-shortcut capture. A session starts view-only. Click the remote
+picture or choose **Control Remote Mac**; if access is missing, use **Allow Keyboard
+Capture…**, enable the signed Sill Viewer in System Settings → Privacy & Security →
+Accessibility, then click the picture again. A restart may be needed after granting
+permission. There is no silent partial-control fallback and no prompt at app startup.
+
+The activation click only takes control; subsequent clicks act on the remote Mac.
+**Release Input** or **Control–Option–Command–K** returns control locally. Moving the
+pointer outside the remote content view also releases input, including during a drag.
+Hovering back does not recapture input; click the picture to resume.
+
+While controlling, normal keyboard events—including Command-Tab, Command-Q,
+Command-Space, Command-Comma, Control-Command-F and Shift-Command-D—go through the
+existing remote HID/text path, not the local menu bar. **Release input first** to use
+local Settings, fullscreen, quit or disconnect shortcuts. Active local VoiceOver's
+Control-Option and Caps Lock navigation releases capture and stays local. Secure Input,
+lost permission or a disabled tap releases control and shows an explanation; capture
+never automatically restarts. Media/power keys and system Mission Control/Exposé
+trackpad gestures are not captured. No private WindowServer API is used.
+
+Use the green window control or, after releasing input, **Control–Command–F** for
+native full screen. Move the pointer to the top edge to reveal the toolbar; after
+release, local resume/exit controls stay available. Escape goes to the remote Mac
+while controlling it. Candidate panels, physical shortcut/IME delivery and
+assistive-technology behavior still require live acceptance.
+
+**Sill Viewer → Settings…** opens General, Sharing and Remote Mac panes. General
+controls this viewer's mute; Remote Mac settings change the host and can affect
+other devices. The host's reported home/away scope is shown beside Quality and
+Resolution. Source, text size, clipboard transfer, mute and remote menus remain
+available from the session toolbar/menu. Closing the viewer window disconnects;
+opening Settings or changing fullscreen mode does not.
 
 Share Clipboard allows remote text to replace the viewer Mac's clipboard.
 **Transfer Local Text to Remote Clipboard** explicitly reads and sends local text;
@@ -2501,6 +2538,9 @@ bash Scripts/make-viewer.sh
 python3 Tests/viewer-package/check.py
 Tests/checks/mac-input/run.sh
 Tests/checks/mac-input/run.sh --mutants
+Tests/checks/run-all.sh mac-chooser mac-viewer-settings mac-viewer-window viewer-controls
+Tests/checks/mac-chooser/run.sh --mutants
+Tests/checks/mac-viewer-window/run.sh --mutants
 bash Tests/mac-pointer/run.sh
 (cd .build/viewer && shasum -a 256 -c Sill-Viewer.dmg.sha256 && shasum -a 256 -c Sill-Viewer.zip.sha256)
 ```

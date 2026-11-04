@@ -14,6 +14,7 @@ struct RemoteMenus: NSViewRepresentable {
     func makeNSView(context: Context) -> NSPopUpButton {
         let button = NSPopUpButton(frame: .zero, pullsDown: true)
         button.setAccessibilityLabel("Remote Menus")
+        context.coordinator.button = button
         return button
     }
 
@@ -52,6 +53,18 @@ struct RemoteMenus: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     final class Coordinator: NSObject, NSMenuDelegate {
+        weak var button: NSPopUpButton?
+        private var openObserver: NSObjectProtocol?
+        override init() {
+            super.init()
+            openObserver = NotificationCenter.default.addObserver(forName: Notification.Name("SillViewerOpenRemoteMenus"), object: nil, queue: .main) { [weak self] note in
+                guard let button = self?.button, let window = note.object as? NSWindow,
+                      button.window === window else { return }
+                // Invoked synchronously from a local UI action, never from a network callback.
+                button.menu?.popUp(positioning: nil, at: NSPoint(x: button.bounds.maxX, y: button.bounds.minY), in: button)
+            }
+        }
+        deinit { if let openObserver { NotificationCenter.default.removeObserver(openObserver) } }
         var top: MacMenuState.Top?
         var connected = false
         var locked = false

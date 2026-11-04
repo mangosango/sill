@@ -70,6 +70,25 @@ final class MacPreeditLabel: NSTextField {
 /// Attach above the existing renderer with identical bounds; call refresh when client state changes.
 /// Keyboard events use either the native text system or the existing HID forwarder.
 final class StreamInputView: NSView, NSTextInputClient {
+    weak var inputState: ViewerInputState?
+    var canTakeControl: Bool {
+        window?.isKeyWindow == true && client?.connected == true && client?.inputPaused == false && client?.macLocked == false
+    }
+    // Tap callbacks can precede queued mouseExited events; never capture outside the window.
+    var keyboardCaptureFocused: Bool {
+        canTakeControl && window?.firstResponder === self && NSApp.isActive
+            && window?.isVisible == true && window?.attachedSheet == nil
+            && window?.frame.contains(NSEvent.mouseLocation) == true
+    }
+    func handleCapturedKeyboard(_ event: NSEvent) {
+        guard enabled, event.window === window else { releaseInput(); return }
+        switch event.type {
+        case .keyDown: keyDown(with: event)
+        case .keyUp: keyUp(with: event)
+        case .flagsChanged: flagsChanged(with: event)
+        default: break
+        }
+    }
     private var keys = MacKeyForwarder()
     private var composition = TextComposition()
     private let preedit = MacPreeditLabel()
@@ -94,18 +113,22 @@ final class StreamInputView: NSView, NSTextInputClient {
         updatePreedit()
     }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard enabled, !MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags)
-                || MacKeyForwarder.releasesKeyboard(keyCode: event.keyCode, modifiers: event.modifierFlags) else { return false }
+        guard enabled else { return false }
+        if MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags, voiceOver: NSWorkspace.shared.isVoiceOverEnabled),
+           !MacKeyForwarder.releasesKeyboard(keyCode: event.keyCode, modifiers: event.modifierFlags) {
+            releaseInput()
+            return false
+        }
         guard event.modifierFlags.contains(.command) else { return false }
         keyDown(with: event)
         return true
     }
     override func keyDown(with event: NSEvent) {
-        guard enabled else { return }
+        guard enabled else { super.keyDown(with: event); return }
         if MacKeyForwarder.releasesKeyboard(keyCode: event.keyCode, modifiers: event.modifierFlags) {
             releaseInput(); window?.makeFirstResponder(nil); return
         }
-        guard !MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags) else {
+        guard !MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags, voiceOver: NSWorkspace.shared.isVoiceOverEnabled) else {
             releaseInput(); super.keyDown(with: event); return
         }
         if (event.isARepeat && MacKeyForwarder.usage(forKeyCode: event.keyCode).map { keys.down.contains($0) } == true) || MacKeyForwarder.rawKey(event, composing: composition.isComposing, hostKeyRepeat: client?.hostKeyRepeat) {
@@ -120,7 +143,7 @@ final class StreamInputView: NSView, NSTextInputClient {
     override func keyUp(with event: NSEvent) { emit(keys.keyUp(event)) }
     override func flagsChanged(with event: NSEvent) {
         guard enabled else { return }
-        if MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags) {
+        if MacKeyForwarder.staysLocal(keyCode: event.keyCode, modifiers: event.modifierFlags, voiceOver: NSWorkspace.shared.isVoiceOverEnabled) {
             emit(keys.releaseAll()); return
         }
         // Text input owns option/shift for dead keys and composition; raw downs carry their flags.
@@ -137,7 +160,7 @@ final class StreamInputView: NSView, NSTextInputClient {
         if replacementRange.location != NSNotFound, !composition.isComposing { composition.select(replacementRange) }
         emitText(composition.setMarked((string as? NSAttributedString)?.string ?? (string as? String ?? ""), selected: selectedRange))
     }
-    func unmarkText() { emitText(composition.unmark()) }
+    func unmarkText() { if enabled { emitText(composition.unmark()) } }
     func hasMarkedText() -> Bool { composition.isComposing }
     func markedRange() -> NSRange { composition.markedRange ?? NSRange(location: NSNotFound, length: 0) }
     func selectedRange() -> NSRange { composition.selectedRange }
@@ -188,8 +211,9 @@ final class StreamInputView: NSView, NSTextInputClient {
     private var momentum = false
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     private var enabled: Bool {
-        MacPointerGeometry.acceptsInput(keyWindow: window?.isKeyWindow == true,
+        inputState?.controlling == true && MacPointerGeometry.acceptsInput(keyWindow: window?.isKeyWindow == true,
             firstResponder: window?.firstResponder === self, connected: client?.connected == true,
             paused: client?.inputPaused != false)
     }
@@ -206,6 +230,9 @@ final class StreamInputView: NSView, NSTextInputClient {
             return ups.isEmpty ? event : nil
         }
         let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.releaseForLocalMenu()
+        })
         for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
                 guard let self, let window = note.object as? NSWindow, window === self.window else { return }
@@ -232,15 +259,24 @@ final class StreamInputView: NSView, NSTextInputClient {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect, .cursorUpdate], owner: self)
+        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .enabledDuringMouseDrag, .activeInKeyWindow, .inVisibleRect, .cursorUpdate], owner: self)
         addTrackingArea(area)
         tracking = area
+    }
+    private func releaseForLocalMenu() {
+        guard inputState?.controlling == true,
+              window?.isKeyWindow == true, window?.firstResponder === self else { return }
+        releaseInput()
     }
     func refresh() {
         if !enabled { releaseInput() }
         window?.invalidateCursorRects(for: self)
     }
     func releaseInput() {
+        if let inputState { inputState.release() }
+        else { releaseHeldInput() }
+    }
+    func releaseHeldInput() {
         if client?.connected == true, client?.inputPaused == false { emitText(composition.forget()) }
         emit(keys.releaseAll())
         composition = TextComposition()
@@ -261,9 +297,11 @@ final class StreamInputView: NSView, NSTextInputClient {
         MacPointerGeometry.point(convert(event.locationInWindow, from: nil), in: picture, clamp: clamp)
     }
     private func down(_ event: NSEvent, button: Int) {
-        guard client?.connected == true, client?.inputPaused == false, window?.isKeyWindow == true,
-              let point = location(event) else { return }
-        window?.makeFirstResponder(self)
+        guard let point = location(event) else { return }
+        if inputState?.controlling != true {
+            inputState?.takeControl()
+            return // The activation click must not also act on the remote Mac.
+        }
         guard enabled, held.insert(button).inserted else { return }
         emitText(composition.forget())
         lastPoint = point
@@ -282,12 +320,14 @@ final class StreamInputView: NSView, NSTextInputClient {
     override func mouseDragged(with event: NSEvent) { mouseMoved(with: event) }
     override func rightMouseDragged(with event: NSEvent) { mouseMoved(with: event) }
     override func mouseMoved(with event: NSEvent) {
+        // Drag events can arrive before the tracking area's exit notification.
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { releaseInput(); return }
         guard enabled, let point = location(event, clamp: !held.isEmpty) else { NSCursor.arrow.set(); return }
         lastPoint = point
         send(.move, at: point)
         cursorUpdate(with: event)
     }
-    override func mouseExited(with event: NSEvent) { NSCursor.arrow.set() }
+    override func mouseExited(with event: NSEvent) { releaseInput() }
     override func cursorUpdate(with event: NSEvent) {
         guard enabled, location(event) != nil, let shape = client?.cursorShape else { NSCursor.arrow.set(); return }
         let image = shape.image.copy() as! NSImage
@@ -319,17 +359,20 @@ final class StreamInputView: NSView, NSTextInputClient {
 final class ViewerSurface: NSView {
     let input = StreamInputView(frame: .zero)
     private let client: StreamClient
+    private let inputState: ViewerInputState
     private var observers: [NSObjectProtocol] = []
     private var pending: DispatchWorkItem?
     private var lastReport = -Double.infinity
     private var source: StreamSource?
 
-    init(client: StreamClient) {
+    init(client: StreamClient, inputState: ViewerInputState) {
         self.client = client
+        self.inputState = inputState
         super.init(frame: .zero)
         addSubview(client.displayView)
         addSubview(input)
         input.client = client
+        inputState.bind(input)
         for name in [NSWindow.didChangeScreenNotification, NSWindow.didChangeBackingPropertiesNotification,
                      NSWindow.didEndLiveResizeNotification, Notification.Name.NSProcessInfoPowerStateDidChange] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
@@ -376,7 +419,7 @@ final class ViewerSurface: NSView {
     func detach() {
         pending?.cancel()
         pending = nil
-        input.releaseInput()
+        inputState.unbind(input)
         input.client = nil
     }
 }

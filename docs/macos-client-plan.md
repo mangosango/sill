@@ -1,13 +1,33 @@
 # Sill Viewer for macOS
 
-Status: native viewer implementation integrated on `macos-viewer`; unsigned builds and
-all 66 check suites pass. Dedicated offline checks pass after two stale structural
-expectations were corrected. The review's missing IME preedit presentation is fixed
-in e32e97b, with focused checks and unsigned universal Mac builds passing again.
-Sang's signed two-Mac test now confirms basic connection/control, local-network pairing
-persistence, input release, network reconnect, Korean text and sound/mute. Remaining
-acceptance gates and reported input issues are listed below; nothing shipped.
-The original foundation-only checkpoint is superseded by the integrated work below.
+Status: native viewer implementation integrated on `macos-viewer`, including the
+content-first [Mac viewer UX follow-up](macos-viewer-ux-plan.md). Original redesign gate
+(before keyboard capture): unsigned universal Mac Debug/Release, iOS simulator Debug
+and all 70 pure suites pass;
+31 input/12 window behavioral mutants killed and 8 chooser mutations rejected.
+The new chooser, toolbar, fullscreen/input ownership and native settings interface
+still need manual UX/accessibility acceptance; nothing shipped. Sang's earlier signed
+two-Mac tests confirm connection/control, pairing persistence, input release, network
+reconnect, Korean text and sound/mute for the pre-redesign viewer. They do not establish
+acceptance of the new interface. Details and remaining gates are in the UX plan and
+`docs/HISTORY.md`; the original foundation-only checkpoint is superseded.
+
+### System-key capture follow-up (2026-11-04)
+
+Sang approved Accessibility permission for remote keyboard control and deferred system
+trackpad gestures. The source now has permission-gated public session-tap capture;
+Command-Tab/Q/Space and app shortcuts go remote while controlling. The local release
+chord, pointer exit, active VoiceOver navigation and lifecycle/failure cleanup stop
+capture. Click-to-control consumes the initial click. Viewing still needs no input
+permission. This supersedes the original local-system-shortcut/no-tap policy.
+
+Universal Mac Debug/Release and focused input/settings/window/controls checks pass;
+all 52 input mutants and 12 window mutants are killed. The real capture manager,
+dispatcher, watchdog and native text path run in hidden-window tests with only the
+system tap boundary replaced. Independent follow-up review approved the VoiceOver
+Caps Lock protection and production-path tests. No actual tap, TCC grant, app launch
+or signed two-Mac capture test was performed. Full details/limitations are in the UX
+plan, DEVELOPMENT and HISTORY; do not count earlier manual acceptance for this path.
 
 ### Custom viewer signing configuration (offline)
 
@@ -71,9 +91,11 @@ Use native SwiftUI/AppKit views and input, sharing the iPad client's session cod
 Start with **one connected Mac and one stream window at a time**.
 
 This separates receiving from sharing: opening the viewer must not start a host,
-request Screen Recording or Accessibility, create a virtual display on this Mac,
-or change the installed host's settings, identity or login item. The remote Mac
-still needs the host's existing permissions.
+request Screen Recording, create a virtual display on this Mac, or change the installed
+host's settings, identity or login item. Viewing needs no input permission. Sang's
+subsequent system-key capture request authorizes Accessibility permission for explicit
+remote control; only a user action opens the permission flow. The remote Mac still
+needs the host's existing permissions.
 
 Proposed defaults:
 
@@ -182,7 +204,10 @@ Remote window Close remains an explicit window control or remote command.
 ### Input and cursor
 
 Use an AppKit `NSView` as the input surface, active only while it owns keyboard
-focus in the key window. No global event tap or input-monitoring permission.
+focus in the key window. The original no-global-tap boundary was superseded by Sang's
+approved system-key capture request: a public session event tap requires Accessibility
+permission and exists only during explicit control. Failure leaves the viewer view-only;
+no keyboard data is logged or reposted into the local system event stream.
 
 - Left/right click, double click, drag, hover, wheel and trackpad scrolling.
 - Convert coordinates through the exact rendered video rectangle, including
@@ -199,12 +224,14 @@ focus in the key window. No global event tap or input-monitoring permission.
 - For raw keys, a host advertising `keyRepeat` owns repetition: suppress local
   `isARepeat` duplicates. Older hosts need an explicitly tested fallback. Never
   repeat committed IME text independently.
-- Send ordinary app shortcuts such as ⌘C, ⌘S and ⌘W remotely while the stream has
-  focus. Text fields, pairing and Settings keep their keys locally. Keep ⌘Q local;
-  remote Quit is available through remote Menus.
-- Keep macOS-reserved shortcuts such as ⌘Tab local. Provide a visible Release
-  Keyboard command and a reserved escape chord (proposed ⌃⌥⌘K), without taking
-  VoiceOver's commands. Do not promise interception of every system shortcut.
+- Route keyboard events, including ⌘Tab, ⌘Q, ⌘Space and app shortcuts, through one
+  ordered path into the existing HID/NSTextInputClient handlers while controlling.
+  Text fields, pairing and Settings keep their keys locally after releasing capture.
+- Keep ⌃⌥⌘K local as the release chord, with visible Release Input and pointer-out
+  exits. Preserve active local VoiceOver's Control-Option and Caps Lock navigation.
+  Stop on Secure Input, permission loss or tap interruption, requiring explicit retry.
+  System trackpad gestures and media/power events remain outside this keyboard tap;
+  do not promise interception of every OS-reserved action.
 - Release all tracked keys/buttons on focus loss, a panel opening, disconnect,
   sleep and window close. Clear local tracking if the connection is already gone;
   remote-side disconnect cleanup remains the last defense against stuck input.
@@ -567,7 +594,9 @@ implementation uses these defaults:
 1. Separate Sill Viewer app rather than adding a viewer window to the existing host.
 2. Native Mac UI, macOS 14+, universal binary, Developer ID distribution first.
 3. One session, Desktop first, existing individual-window selection available.
-4. Local system shortcuts and ⌘Q stay local; no global input capture permission.
+4. Updated by Sang's later approval: Accessibility-authorized system-key capture while
+   controlling, with ⌃⌥⌘K/pointer-out release and active local VoiceOver protection.
+   Viewing remains permission-free; system trackpad gestures are deferred.
 5. Text clipboard uses an explicit local-to-remote transfer action, not continuous sync.
 
 The plan-only commit changed no application behavior. Subsequent implementation

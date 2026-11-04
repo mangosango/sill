@@ -1,11 +1,29 @@
 # Pure checks
 
+Native viewer UX checks also include `mac-chooser` (identity-based row grouping,
+confirmed-link/cancellation wiring and keyboard affordances) and
+`mac-viewer-settings` (native toolbar/window wiring, settings scope and capability
+fences, plus Swift 5 typechecking against a compile-only client fixture),
+`mac-viewer-window` (21 hidden-window policy/delegate/lifecycle checks and 12
+behavioral mutants), and `viewer-controls` (cross-file UI/surface/chooser wiring).
+`mac-chooser --mutants` rejects eight source/policy mutations and participates in
+the shared mutant runner. These do not launch the viewer or establish rendered
+layout, fullscreen Space placement, live pairing or VoiceOver acceptance.
+
 The viewer's `mac-input` suite also runs an AppKit routing fixture in unshown windows,
 with a recording client and a private pasteboard (no network, visible UI or desktop
-input injection). It checks Command-modified key-up delivery, window isolation, focus
-cleanup and a drag across a clipboard write. It runs in Debug and optimized builds;
-its 20 mutants include two of the routing regressions. This is not a live clipboard
-or two-Mac interaction test.
+input injection). It checks Command-modified key-up delivery, window isolation,
+click-to-control without click-through or hover recapture, idempotent publication,
+remote system/app shortcuts, the local escape chord, released Escape/Tab delivery,
+native menu tracking, pointer/drag/focus cleanup and a drag across a clipboard write.
+It runs the real keyboard-capture manager/dispatcher/watchdog with an in-memory
+`MacKeyboardTap` boundary: no TCC queries, permission prompts or actual event taps.
+Synthetic CGEvents are converted but never posted. Checks cover event suppression/
+pass-through, permission/Secure Input/tap failure, active VoiceOver Control-Option and
+Caps Lock, rebound modifiers/repeats, and ordinary text through `interpretKeyEvents`.
+Debug and optimized builds run; all 52 behavioral mutants must be killed without
+compile errors or invalid edits. This is not physical keyboard/IME/VoiceOver, live
+clipboard, system tap or two-Mac acceptance.
 
 The parts of Sill that decide things (when the device looks for a Mac and which path a session
 takes, the settings ledger, the wire format, what of the clipboard goes between the Mac and a device, pairing, who may use which door, which device versions a

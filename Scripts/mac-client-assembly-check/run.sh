@@ -13,6 +13,8 @@ paths = [o[o[k]['fileRef']]['path'] for k in source_phase['files']]
 assert len(paths) == len(set(paths))
 for name in ['StreamClient.swift', 'DeviceIdentity.swift', 'StreamClient+Audio.swift', 'StreamClient+Clipboard.swift', '../MacClient/HEVCDisplayView.swift', '../MacClient/SillViewerApp.swift']:
     assert name in paths, name
+for source in Path('MacClient').glob('*.swift'):
+    assert '../' + str(source) in paths, f'Unregistered viewer source: {source}'
 assert 'HEVCDisplayView.swift' not in paths
 assert not any('Stub' in x or 'Fixture' in x or x in ['InputOverlay.swift', 'ContentView.swift', 'SillApp.swift'] for x in paths)
 for v in o.values():

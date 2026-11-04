@@ -17,11 +17,15 @@ struct MacKeyForwarder {
         return [.key(hidUsage: usage, down: true, modifiers: Self.flags(event.modifierFlags))]
     }
 
-    /// Commands owned by macOS/accessibility never enter the remote held-key ledger.
-    static func staysLocal(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
-        let flags = modifiers.intersection([.command, .control, .option, .shift])
-        return flags.isSuperset(of: [.control, .option])
-            || (flags.contains(.command) && [UInt16(kVK_ANSI_Q), UInt16(kVK_Tab), UInt16(kVK_Space)].contains(keyCode))
+    /// Only the release chord and an active local VoiceOver's navigation stay local.
+    static func staysLocal(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, voiceOver: Bool = false) -> Bool {
+        releasesKeyboard(keyCode: keyCode, modifiers: modifiers)
+            || voiceOverOwns(keyCode: keyCode, modifiers: modifiers, enabled: voiceOver)
+    }
+
+    static func voiceOverOwns(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, enabled: Bool) -> Bool {
+        enabled && (modifiers.isSuperset(of: [.control, .option])
+                    || keyCode == UInt16(kVK_CapsLock) || modifiers.contains(.capsLock))
     }
 
     static func releasesKeyboard(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {

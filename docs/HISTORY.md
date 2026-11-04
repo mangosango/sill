@@ -7,6 +7,134 @@ comments that say "CLAUDE.md, Current step" or "the Current step" mean this file
 
 ## Current step
 
+### Viewer system-key capture — implemented, signed/manual acceptance pending (2026-11-04)
+
+Sang approved Accessibility permission for full keyboard control and deferred Mission
+Control/App Exposé trackpad gestures. Inspection of andygrundman/moonlight-qt at
+`de2467e` found SDL keyboard-grab calling private `CGSSetGlobalHotKeyOperatingMode`
+(its v19 dependencies build SDL with `SDL_MAC_NO_SANDBOX`). Sill does not copy that
+implementation or add SDL: `MacClient/MacKeyboardCapture.swift` uses a public,
+Accessibility-authorized session `CGEventTap` on the main run loop.
+
+- Explicit click/toolbar acquisition installs capture only after permission and
+  Secure Input checks. Failed/denied capture remains view-only with an inline reason;
+  only the explicit Allow Keyboard Capture action requests access/opens Settings.
+  The initial picture click is consumed. No startup permission prompt or silent
+  partial-control fallback.
+- Keyboard downs, ups and modifiers follow one synchronous path into the existing
+  input view/HID/NSTextInputClient handlers. Command-Tab/Q/Space and app shortcuts
+  including Settings/fullscreen/disconnect accelerators go remote while controlling.
+  Release first to use local shortcuts. No event reposting or logging of key data.
+- Control–Option–Command–K stays local. Active local VoiceOver's Control-Option,
+  Caps Lock press/release and Caps Lock navigation release capture and pass through.
+  Pointer-out, focus/menu/session loss, pause/lock, sleep and window teardown stop
+  capture and clean held input. Current pointer position is also checked at callback/
+  watchdog time so queued mouse-exit delivery cannot retain capture outside the window.
+- Tap timeout/disable stops rather than auto-reenabling. A 0.5-second main-loop watchdog
+  detects Secure Input, permission revocation, disabled taps and lost ownership even
+  without keyboard events. Retry requires explicit acquisition. Media/power keys and
+  system trackpad gestures are outside this tap.
+
+Verified: unsigned universal Mac Debug/Release, focused input/settings/window/controls
+checks, all **52 input mutants** and **12 window mutants** killed; assembly, identity,
+package/profile/failure guards, pointer/viewport 28 and native menus 12 assertions.
+The input fixture runs production capture start/stop/dispatch/watchdog against an
+in-memory `MacKeyboardTap` boundary, never a real tap or TCC query. It checks returned
+versus suppressed events, exactly-once release, failure handling, both VoiceOver
+modifiers, rebound modifiers/repeat and ordinary text through `interpretKeyEvents`.
+Review initially caught missing Caps Lock protection and insufficient lifecycle
+coverage; follow-up review approved both fixes and reran Debug/optimized tests.
+Logs: `/tmp/sill-system-keys-*.log`; mutant logs in `.build/checks/mac-input/`.
+
+Untested, for Sang/Noah: grant/revoke permission on the signed viewer; real Cmd-Tab/Q/
+Space and modifier behavior without local side effects; physical Korean/IME/dead keys;
+VoiceOver using each modifier; Secure Input/timeout transitions; window activation,
+fullscreen edges, pointer exit, sleep/reconnect and release during drag/composition.
+Offline tests do not validate actual event-tap delivery or TCC. Full pure/iOS suites
+were not repeated for this Mac-only follow-up. The running app, signing/profile and
+skill files are untouched; no app launch, tap installation, permissions, real input,
+connection, signing or installation occurred during implementation/testing.
+
+### Viewer click-to-control (2026-11-04)
+
+Sang requested picture-click control acquisition, superseding the toolbar-only/no-click
+recapture policy. A left or right click inside the remote picture now takes control;
+the activation click is consumed to avoid accidental remote actions. The next click
+forwards normally. The view opts into activation clicks; acquisition still requires
+its key window, a connected/unpaused client and a successful first-responder change.
+Outside-picture clicks do not acquire. Pointer exit (including dragging) and
+Control–Option–Command–K still release; returning/hovering alone does not recapture.
+The toolbar control remains available for keyboard/accessibility use. Updated the
+initial session hint, Settings explanation and development/UX documentation.
+
+Verified: unsigned universal Mac Debug build; Debug/optimized hidden-window input
+checks; all **37 input mutants** killed
+with no compile/runtime errors; settings/window/controls checks and 12 window mutants.
+Logs: `/tmp/sill-click-control-checks.log`. Tests cover activation-click consumption,
+subsequent remote clicks, left/right acquisition, outside/inactive/disconnected/paused
+refusal, hover-only return and existing release paths. No app launch, signing,
+connection, permission change or replacement. Actual inactive-window activation and
+SwiftUI layout changes during the click still need manual acceptance. Full system-key
+capture is not implemented in this change; Mission Control/Exposé gestures are deferred.
+
+### Viewer pointer-out escape hatch — partial input-capture follow-up (2026-11-04)
+
+Sang requested remote routing of system shortcuts (notably Command-Tab) and system
+trackpad gestures, retaining pointer-out and Control–Option–Command–K as local exits.
+Implemented the safe pointer-out portion: leaving the remote content view releases
+ownership through existing key/button/scroll/composition cleanup. Tracking stays
+active during dragging; an out-of-bounds drag releases before a delayed exit event.
+Returning/clicking does not recapture. Toolbar help and Settings explain the exit.
+
+This does **not** implement system-shortcut or Mission Control/Exposé capture.
+Command-Tab and the existing local shortcut policy remain unchanged. Intercepting
+system keyboard shortcuts needs a separately reviewed event-tap/permission design,
+contrary to the original viewer no-input-permissions/no-global-hook boundary. Apple’s
+Handling Trackpad Events documentation explicitly gives system-wide gestures
+precedence over app handlers; a swipe handler alone cannot guarantee remote-only
+Mission Control/Exposé. Permission/private-API decisions remain with Sang; no new
+permission request, global tap, system preference change or private API was added.
+
+Verified: hidden-window Debug/optimized routing tests for pointer exit, drag exit,
+exactly-once held-input cleanup, no recapture and the release chord; all **34 input
+mutants** killed, plus settings/window/controls checks and 12 window mutants. Logs:
+`/tmp/sill-pointer-exit-checks.log`. No app launch, signing, connection or replacement.
+Untested: physical tracking/drag/fullscreen edge behavior; full system input capture
+remains unimplemented, not merely untested.
+
+### Native viewer UX follow-up — implemented, manual acceptance pending (2026-11-04)
+
+Sang approved the content-first macOS redesign in `docs/macos-viewer-ux-plan.md`.
+Four `openai/gpt-6.1-sol` low implementation lanes delivered a paired/available Mac
+chooser with on-demand pairing and Search Nearby; a unified compact session toolbar;
+native fullscreen and explicit input release/resume; and icon-toolbar settings
+separating viewer preferences from remote-host controls. Parent registered the new
+viewer-only sources, integrated menu commands and checks, and arranged independent
+source reviews using the requested model/reasoning level. Host/protocol/iOS sources,
+signing configuration and user skill-installation files were not changed.
+
+Verified: unsigned universal Mac Debug/Release and iOS simulator Debug builds;
+all 70 pure suites (612 s); 31/31 input and 12/12 window behavioral mutants killed;
+8 chooser mutations rejected; pointer/viewport 28 and remote-menu 12 assertions;
+assembly, identity and package/profile guards. Logs: `/tmp/sill-viewer-ux-gate/`.
+Input tests use unshown windows/recording clients and a private pasteboard. No app
+was launched, signed, installed, connected or replaced; the manually tested signed
+app remains untouched. Existing build warnings remain.
+
+Review fixes: Search Nearby is explicit for a fresh viewer; ownership publishes only
+real transitions; released Escape/Tab reach local responders; native menu tracking
+releases held keys/buttons in the controlling key window. Final source review found
+no remaining actionable issues in the inspected areas. Toolbar fullscreen auto-hide
+uses a forwarding delegate proxy; remote menus use a hidden native anchor, both
+covered offline but still requiring real AppKit acceptance.
+
+Untested, for Sang/Noah: rendered chooser/settings/compact toolbar and long names;
+fullscreen top-edge reveal, Escape and Settings across Spaces; local/remote shortcut
+routing, physical IME and release during drag; reconnect/sleep/close/reopen;
+VoiceOver/keyboard-only access and accessibility appearances. Signing, notarization
+and quarantine remain separate gates. Prior signed two-Mac acceptance below applies
+to the pre-redesign viewer, not this new interface.
+
 **Native Mac viewer (branch `macos-viewer`, UNRELEASED source preview).** The
 integrated progress in `docs/macos-client-plan.md` is authoritative, not historical
 assignments. f0632a2 adds separate universal DMG/ZIP/checksums and packaging isolation

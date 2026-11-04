@@ -16,9 +16,13 @@ precondition(keys.releaseAll().isEmpty)
 precondition(keys.keyUp(key(0)).isEmpty)
 precondition(MacKeyForwarder.usage(forKeyCode: 82) == nil) // keypad zero stays text
 precondition(MacKeyForwarder.usage(forKeyCode: 76) == nil) // keypad Enter stays text
-precondition(MacKeyForwarder.staysLocal(keyCode: 12, modifiers: .command))
-precondition(MacKeyForwarder.staysLocal(keyCode: 48, modifiers: .command))
-precondition(MacKeyForwarder.staysLocal(keyCode: 0, modifiers: [.control, .option]))
+precondition(!MacKeyForwarder.staysLocal(keyCode: 12, modifiers: .command))
+precondition(!MacKeyForwarder.staysLocal(keyCode: 48, modifiers: .command))
+precondition(!MacKeyForwarder.staysLocal(keyCode: 0, modifiers: [.control, .option]))
+precondition(MacKeyForwarder.staysLocal(keyCode: 0, modifiers: [.control, .option], voiceOver: true))
+precondition(MacKeyForwarder.staysLocal(keyCode: 57, modifiers: [], voiceOver: true))
+precondition(MacKeyForwarder.staysLocal(keyCode: 123, modifiers: [.capsLock], voiceOver: true))
+precondition(!MacKeyForwarder.staysLocal(keyCode: 57, modifiers: [.capsLock]))
 precondition(!MacKeyForwarder.staysLocal(keyCode: 1, modifiers: .command))
 precondition(MacKeyForwarder.releasesKeyboard(keyCode: 40, modifiers: [.control, .option, .command]))
 precondition(!MacKeyForwarder.releasesKeyboard(keyCode: 40, modifiers: [.control, .option]))
@@ -47,7 +51,33 @@ precondition(!MacKeyForwarder.rawKey(key(0, flags: .option), composing: false, h
 precondition(MacKeyForwarder.rawKey(key(1, flags: .command), composing: false, hostKeyRepeat: nil))
 precondition(MacKeyForwarder.rawKey(key(123), composing: false, hostKeyRepeat: nil))
 precondition(!MacKeyForwarder.rawKey(key(10), composing: false, hostKeyRepeat: 1))
-print("mac-input: 37 keyboard/composition policy assertions passed")
+precondition(MacKeyboardCapturePolicy.availability(trusted: false, secureInput: false, tapEnabled: true) == .permission)
+precondition(MacKeyboardCapturePolicy.availability(trusted: true, secureInput: true, tapEnabled: true) == .secureInput)
+precondition(MacKeyboardCapturePolicy.availability(trusted: true, secureInput: false, tapEnabled: false) == .interrupted)
+precondition(MacKeyboardCapturePolicy.availability(trusted: true, secureInput: false, tapEnabled: true) == nil)
+for type in [CGEventType.keyDown, .keyUp, .flagsChanged] {
+    precondition(MacKeyboardCapturePolicy.route(type: type, keyCode: 48, modifiers: .command,
+        owning: true, voiceOver: false) == .deliver)
+    precondition(MacKeyboardCapturePolicy.route(type: type, keyCode: 0, modifiers: [],
+        owning: true, voiceOver: false) == .deliver, "text and releases share the same ordered delivery")
+    precondition(MacKeyboardCapturePolicy.route(type: type, keyCode: 48, modifiers: .command,
+        owning: false, voiceOver: false) == .releaseToLocal)
+}
+for type in [CGEventType.tapDisabledByTimeout, .tapDisabledByUserInput] {
+    precondition(MacKeyboardCapturePolicy.route(type: type, keyCode: 0, modifiers: [],
+        owning: true, voiceOver: false) == .interrupted)
+}
+precondition(MacKeyboardCapturePolicy.route(type: .keyDown, keyCode: 40, modifiers: [.command, .option, .control],
+    owning: true, voiceOver: true) == .release)
+precondition(MacKeyboardCapturePolicy.route(type: .keyDown, keyCode: 0, modifiers: [.option, .control],
+    owning: true, voiceOver: true) == .releaseToLocal)
+precondition(MacKeyboardCapturePolicy.route(type: .keyDown, keyCode: 0, modifiers: [.option, .control],
+    owning: true, voiceOver: false) == .deliver)
+precondition(MacKeyboardCapturePolicy.route(type: .flagsChanged, keyCode: 57, modifiers: [],
+    owning: true, voiceOver: true) == .releaseToLocal)
+precondition(MacKeyboardCapturePolicy.route(type: .keyDown, keyCode: 123, modifiers: [.capsLock],
+    owning: true, voiceOver: true) == .releaseToLocal)
+print("mac-input: keyboard/composition and permission/capture routing policy assertions passed")
 
 // Detached native label only: no application, window, responder or host IO.
 let preedit = MacPreeditLabel()

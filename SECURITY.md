@@ -69,5 +69,13 @@ persistent pairing requires viewer-specific signing/profile authorization. It do
 not migrate or adopt Sill for Mac's identity. Co-resident clipboard forwarding and
 recursive viewing are unsupported: a local host may forward text received by the
 viewer to its subscribers. Turn off viewer Share Clipboard to prevent transfers.
+Viewing does not request Screen Recording or input permission. Explicit remote control
+requires Accessibility permission on the viewer Mac: a public session event tap routes
+keyboard events to the focused remote view, including system shortcuts. Capture stops
+on release, pointer/focus/session loss or detected permission/tap failure; the local
+Control–Option–Command–K chord always releases it. Active local VoiceOver navigation
+is preserved. Captured keys are not logged or reposted as local system input. System
+trackpad gestures and media/power keys are outside this capture path.
 See [developer limitations](docs/DEVELOPMENT.md#unreleased-mac-viewer-source-preview).
-Isolated policy tests do not establish no-echo, physical-input or live-media safety.
+Offline tests substitute the system tap boundary; they do not establish physical
+input/IME/VoiceOver safety, actual TCC/tap behavior, no-echo or live-media acceptance.

@@ -11,10 +11,14 @@ OUT = ROOT / '.build/checks/mac-input/mutants'
 OUT.mkdir(parents=True, exist_ok=True)
 KEY = 'MacClient/MacKeyboard.swift'
 VIEW = 'MacClient/StreamInputView.swift'
+STATE = 'MacClient/ViewerInputState.swift'
+CAPTURE = 'MacClient/MacKeyboardCapture.swift'
 # name, harness, source, unique old text, replacement
 MUTANTS = [
-    ('K1 local Command-Q', 'input', KEY, 'UInt16(kVK_ANSI_Q), ', ''),
-    ('K2 accessibility chord', 'input', KEY, 'flags.isSuperset(of: [.control, .option])', 'false'),
+    ('K1 Command-Q wrongly local', 'input', KEY, 'releasesKeyboard(keyCode: keyCode, modifiers: modifiers)', 'keyCode == 12 || releasesKeyboard(keyCode: keyCode, modifiers: modifiers)'),
+    ('K2 accessibility chord', 'input', KEY, 'modifiers.isSuperset(of: [.control, .option])', 'false'),
+    ('V1 VoiceOver Caps Lock press captured', 'input', KEY, 'keyCode == UInt16(kVK_CapsLock) || ', ''),
+    ('V2 VoiceOver Caps Lock navigation captured', 'input', KEY, '|| modifiers.contains(.capsLock)', ''),
     ('K3 release chord', 'input', KEY, 'keyCode == UInt16(kVK_ANSI_K)', 'keyCode == UInt16(kVK_ANSI_J)'),
     ('K4 release held keys', 'input', KEY, 'while let usage = down.last, let up = ended(usage) { ups.append(up) }', 'down.removeAll()'),
     ('K5 repeated down dedup', 'input', KEY, 'if !down.contains(usage) { down.append(usage) }', 'down.append(usage)'),
@@ -26,8 +30,38 @@ MUTANTS = [
     ('I2 selection highlight absent', 'input', VIEW, 'if selection.length > 0 {', 'if false {'),
     ('I3 cleared label retains text', 'input', VIEW, 'attributedStringValue = NSAttributedString(string: "")', '// retain stale text'),
     ('I4 preedit takes focus', 'input', VIEW, 'override var acceptsFirstResponder: Bool { false }', 'override var acceptsFirstResponder: Bool { true }'),
+    ('L1 released local keys swallowed', 'routing', VIEW, 'guard enabled else { super.keyDown(with: event); return }', 'guard enabled else { return }'),
+    ('L2 native menu tracking ignored', 'routing', VIEW, 'forName: NSMenu.didBeginTrackingNotification', 'forName: NSMenu.didEndTrackingNotification'),
+    ('L3 menu other-window isolation lost', 'routing', VIEW, 'window?.isKeyWindow == true, window?.firstResponder === self', 'window?.firstResponder === self'),
+    ('O1 ownership gate missing', 'routing', VIEW, 'inputState?.controlling == true && MacPointerGeometry', 'MacPointerGeometry'),
+    ('O2 click fails to acquire', 'routing', VIEW, 'inputState?.takeControl()', '// do not acquire'),
+    ('C1 activation clicks through', 'routing', VIEW, 'return // The activation click must not also act on the remote Mac.', '// allow click through'),
+    ('C2 activation click discarded', 'routing', VIEW, 'override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }', 'override func acceptsFirstMouse(for event: NSEvent?) -> Bool { false }'),
+    ('C3 outside picture acquires', 'routing', VIEW, 'guard let point = location(event) else { return }', 'guard let point = location(event, clamp: true) else { return }'),
+    ('O3 release leaves ownership', 'routing', STATE, 'if controlling { controlling = false }', 'if controlling { controlling = true }'),
+    ('O7 redundant release publication', 'routing', STATE, 'if controlling { controlling = false }', 'controlling = false'),
+    ('O8 redundant control publication', 'routing', STATE, 'guard !controlling else { return }', 'if controlling { controlling = true; return }'),
+    ('O4 settings shortcut wrongly local', 'routing', KEY, 'releasesKeyboard(keyCode: keyCode, modifiers: modifiers)', 'keyCode == 43 || releasesKeyboard(keyCode: keyCode, modifiers: modifiers)'),
+    ('O5 fullscreen shortcut wrongly local', 'routing', KEY, 'releasesKeyboard(keyCode: keyCode, modifiers: modifiers)', 'keyCode == 3 || releasesKeyboard(keyCode: keyCode, modifiers: modifiers)'),
+    ('O6 disconnect shortcut wrongly local', 'routing', KEY, 'releasesKeyboard(keyCode: keyCode, modifiers: modifiers)', 'keyCode == 2 || releasesKeyboard(keyCode: keyCode, modifiers: modifiers)'),
+    ('T1 permission bypass', 'input', CAPTURE, 'if !trusted { return .permission }', 'if false { return .permission }'),
+    ('T2 secure-input bypass', 'input', CAPTURE, 'if secureInput { return .secureInput }', 'if false { return .secureInput }'),
+    ('T3 disabled tap ignored', 'input', CAPTURE, 'if !tapEnabled { return .interrupted }', 'if false { return .interrupted }'),
+    ('T4 ownership ignored', 'input', CAPTURE, 'guard owning,', 'guard true,'),
+    ('T5 escape captured remotely', 'input', CAPTURE, '{ return .release }', '{ return .deliver }'),
+    ('T6 VoiceOver captured remotely', 'input', CAPTURE, 'if MacKeyForwarder.voiceOverOwns(keyCode: keyCode, modifiers: modifiers, enabled: voiceOver)', 'if false'),
+    ('T7 text bypasses ordered capture', 'input', CAPTURE, 'return .deliver\n', 'return .releaseToLocal\n'),
+    ('T8 no capture stop on release', 'routing', STATE, '        capture.stop()', '        // leave capture running'),
+    ('T9 failure retains ownership', 'routing', STATE, '            self?.release()', '            // retain ownership'),
+    ('T10 capture bridge loses window', 'routing', CAPTURE, 'windowNumber: window.windowNumber', 'windowNumber: 0'),
+    ('T11 captured event also delivered locally', 'routing', CAPTURE, 'view.handleCapturedKeyboard(rebound)\n            return nil', 'view.handleCapturedKeyboard(rebound)\n            return Unmanaged.passUnretained(event)'),
+    ('T12 watchdog fails to release ownership', 'routing', CAPTURE, 'owner?.release()\n            return\n', '// retain ownership\n            return\n'),
+    ('T13 lost capture not reported', 'routing', CAPTURE, 'notify?(failure)', '// swallow failure'),
     ('R1 swallowed Command keyUp', 'routing', VIEW, 'let ups = self.keys.keyUp(event)', 'let ups: [InputEvent] = []'),
     ('R2 other window keyUp', 'routing', VIEW, 'event.window === window else { return event }', 'true else { return event }'),
+    ('E1 pointer exit keeps control', 'routing', VIEW, 'override func mouseExited(with event: NSEvent) { releaseInput() }', 'override func mouseExited(with event: NSEvent) { NSCursor.arrow.set() }'),
+    ('E2 drag exit keeps control', 'routing', VIEW, 'guard bounds.contains(convert(event.locationInWindow, from: nil)) else { releaseInput(); return }', 'guard true else { releaseInput(); return }'),
+    ('E3 drag tracking disabled', 'routing', VIEW, '.mouseEnteredAndExited, .enabledDuringMouseDrag,', '.mouseEnteredAndExited,'),
     ('P1 letterbox accepts pointer', 'pointer', VIEW, 'clamp || rect.contains(point)', 'true'),
     ('P2 horizontal origin ignored', 'pointer', VIEW, '(point.x - rect.minX) / rect.width', 'point.x / rect.width'),
     ('P3 vertical fraction inverted', 'pointer', VIEW, '(point.y - rect.minY) / rect.height', '1 - (point.y - rect.minY) / rect.height'),
@@ -53,7 +87,7 @@ def check(name, harness, source=None, old=None, new=None):
     folder = OUT / name
     folder.mkdir(exist_ok=True)
     paths = {}
-    for relative in (KEY, VIEW):
+    for relative in (KEY, VIEW, STATE, CAPTURE):
         text = (ROOT / relative).read_text()
         if relative == source:
             if text.count(old) != 1:
@@ -66,12 +100,12 @@ def check(name, harness, source=None, old=None, new=None):
     if harness != 'routing':
         args += ['-D', 'POINTER_POLICY_TEST']
     if harness == 'routing':
-        args += [paths[KEY], ROOT / 'MacClient/MacClipboard.swift',
+        args += [paths[KEY], paths[STATE], paths[CAPTURE], ROOT / 'MacClient/MacClipboard.swift',
                  ROOT / 'iOSClient/KeyChords.swift', ROOT / 'iOSClient/TextComposition.swift',
                  ROOT / 'Tests/checks/mac-input/routing/Fixture.swift',
                  ROOT / 'Tests/checks/mac-input/routing/main.swift']
     elif harness == 'input':
-        args += ['-D', 'MAC_INPUT_TEST', '-D', 'DEBUG', paths[KEY],
+        args += ['-D', 'MAC_CAPTURE_POLICY_TEST', '-D', 'MAC_INPUT_TEST', '-D', 'DEBUG', paths[KEY], paths[CAPTURE],
                  ROOT / 'iOSClient/KeyChords.swift', ROOT / 'iOSClient/TextComposition.swift',
                  ROOT / 'Tests/checks/mac-input/main.swift']
     else:
