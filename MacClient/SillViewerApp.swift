@@ -13,17 +13,26 @@ struct SillViewerApp: App {
                 Text(client.status).textSelection(.enabled).accessibilityAddTraits(.updatesFrequently)
                 if client.connected {
                     ViewerPicture(client: client)
-                    Button("Disconnect") { client.disconnect() }
+                        .overlay {
+                            if let shade = client.lockShade {
+                                VStack {
+                                    Text(LockedMac.title(mac: client.hostName, shade: shade)).font(.headline)
+                                    if let detail = LockedMac.detail(shade: shade, paired: client.settings.host?.sessionPaired) { Text(detail) }
+                                }.padding().frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+                            }
+                        }
+                    ViewerControls(client: client)
+                    Button("Disconnect") { releasePicture(); client.disconnect() }
                         .keyboardShortcut("d", modifiers: [.command, .shift])
                 } else {
                     ViewerConnectView(client: client)
                 }
-                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself. Native stream input and richer stream controls are not available in this checkpoint.")
+                Text("Avoid viewing this Mac itself or having two Macs view each other: the picture can repeat inside itself. Remote Menus are not available in this checkpoint.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding()
             .frame(minWidth: 640, minHeight: 400)
-            .onDisappear { client.disconnect() }
+            .onDisappear { releasePicture(); client.disconnect() }
             .onAppear {
                 guard !started else { return }
                 started = true
@@ -168,4 +177,91 @@ private struct ViewerPicture: NSViewRepresentable {
     let client: StreamClient
     func makeNSView(context: Context) -> HEVCDisplayView { client.displayView }
     func updateNSView(_ view: HEVCDisplayView, context: Context) {}
+}
+
+// Relinquish input before a control changes the remote source or opens a native menu.
+private func releasePicture() { NSApp.keyWindow?.makeFirstResponder(nil) }
+
+private struct ViewerControls: View {
+    @ObservedObject var client: StreamClient
+    @AppStorage(StreamClient.clipboardKey) private var sharing = true
+    @State private var scale = TextScale.off
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Button("Desktop") { releasePicture(); client.select(.desktop) }
+                Menu("Windows") {
+                    ForEach(client.windows) { window in
+                        Button("\(window.appName) — \(window.title)") { releasePicture(); client.select(.window(window.id)) }
+                    }
+                }.simultaneousGesture(TapGesture().onEnded { releasePicture() })
+                Menu("Apps") {
+                    ForEach(client.apps) { app in
+                        Button(app.name) { releasePicture(); client.launch(bundleID: app.bundleID) }
+                    }
+                }.simultaneousGesture(TapGesture().onEnded { releasePicture() })
+                Picker("Aa", selection: Binding(get: {
+                    TextScale.position(of: TextScale.scale(at: scale), offered: client.textScaleOffersOff)
+                }, set: { value in
+                    releasePicture()
+                    scale = value
+                    if var viewport = client.lastViewport {
+                        viewport.scale = TextScale.scale(at: value)
+                        client.sendViewport(viewport)
+                    }
+                })) {
+                    ForEach(TextScale.detents(offered: client.textScaleOffersOff), id: \.self) { value in
+                        Text(TextScale.title(at: value)).tag(value)
+                    }
+                }.disabled(!client.textScaleSelectable || client.macLocked)
+                Button("Release Keyboard") { releasePicture() }
+            }.disabled(client.macLocked)
+            DisclosureGroup("Stream Settings") {
+                settings
+            }.simultaneousGesture(TapGesture().onEnded { releasePicture() })
+            if let problem = client.settingsProblem { Text(problem).foregroundStyle(.red).textSelection(.enabled) }
+            Toggle("Share Clipboard", isOn: $sharing)
+                .onChange(of: sharing) { _ in releasePicture(); client.clipboardSwitchChanged() }
+            Text("Warning: a Sill host running on this Mac may forward received clipboard text to its devices. Turn sharing off to prevent viewer clipboard transfers. Remote Command-V uses the remote clipboard; it does not transfer local text.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("Transfer Local Text to Remote Clipboard") { releasePicture(); client.transferLocalClipboard() }
+                .disabled(!sharing || client.macLocked || !ClipboardPolicy.hostTakes(client.hostClipboard))
+            if let note = client.clipboardNote { Text(note.text).textSelection(.enabled) }
+            Toggle("Mute This Viewer", isOn: Binding(get: { client.soundMuted }, set: { releasePicture(); client.setSoundMuted($0) }))
+        }
+    }
+
+    @ViewBuilder private var settings: some View {
+        if let shown = client.settings.displayed {
+            VStack(alignment: .leading) {
+                Picker("Quality", selection: setting(shown.bitrate) { HostSettingsChange(bitrate: $0) }) {
+                    ForEach(QualityPreset.allCases) { Text($0.title).tag($0.rawValue) }
+                    if QualityPreset(rawValue: shown.bitrate) == nil { Text(QualityPreset.title(forBitrate: shown.bitrate)).tag(shown.bitrate) }
+                }
+                Picker("Resolution", selection: setting(shown.captureScale) { HostSettingsChange(captureScale: $0) }) {
+                    Text("Standard").tag(1.0); Text("Retina").tag(2.0)
+                }
+                Picker("Frame Rate Limit", selection: setting(shown.maxFPS) { HostSettingsChange(maxFPS: $0) }) {
+                    Text("60 fps").tag(60); Text("120 fps").tag(120)
+                }
+                Toggle("Prioritize Encoding Speed", isOn: setting(shown.prioritizeSpeed) { HostSettingsChange(prioritizeSpeed: $0) })
+                Toggle("Virtual Display", isOn: setting(shown.virtualDisplay) { HostSettingsChange(virtualDisplay: $0) })
+                    .disabled(client.settings.host?.virtualDisplayAvailable != true && !shown.virtualDisplay)
+                if let wireless = shown.directWireless {
+                    Toggle("Direct Wireless Connection", isOn: setting(wireless) { HostSettingsChange(directWireless: $0) })
+                        .disabled(client.remoteRoute != nil || client.settings.host?.takesDirectWireless != true)
+                }
+                if let audio = shown.sendAudio {
+                    Toggle("Send Audio to All Devices (Beta)", isOn: setting(audio) { HostSettingsChange(sendAudio: $0) })
+                } else { Text("Update Sill on the remote Mac for sound.") }
+                if let note = client.settings.host?.audioNote { Text(note) }
+                if let note = client.settings.host?.virtualDisplayNote { Text(note) }
+            }.disabled(client.macLocked)
+        } else { Text("Waiting for host settings. Older Macs may not support them.") }
+    }
+
+    private func setting<Value>(_ value: Value, change: @escaping (Value) -> HostSettingsChange) -> Binding<Value> {
+        Binding(get: { value }, set: { releasePicture(); client.changeSettings(change($0)) })
+    }
 }
