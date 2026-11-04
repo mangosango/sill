@@ -61,3 +61,5 @@ assert 'CODE_SIGNING_ALLOWED=NO' in script
 assert 'Sill-Viewer.zip' in script and 'Sill.dmg' not in script
 assert 'SILL_PROVISION_PROFILE' not in script
 print('Viewer package: 16 profile, argument and static checks passed; bash -n passed.')
+assert 'REGISTER_APP_WITH_LAUNCH_SERVICES=NO' in script
+subprocess.run(['python3', str(root / 'Tests/viewer-package/artifacts.py')], check=True)
