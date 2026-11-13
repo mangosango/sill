@@ -39,6 +39,19 @@ enum MacKeyboardCapturePolicy {
         return .deliver
     }
 
+    /// WindowServer gesture (29) and Dock control (30) events. These numbers and field 110 are
+    /// undocumented; Mac Mouse Fix posts the same values to start Mission Control.
+    static let gestureTypes: [UInt32] = [29, 30]
+    static let gestureHIDTypeField = CGEventField(rawValue: 110)!
+    static let dockSwipeHIDType: Int64 = 23
+
+    /// Nil for any event but a gesture. True for a Dock swipe: Mission Control, App Exposé,
+    /// Spaces, Launchpad or Show Desktop. The tap stops it locally only while the remote Mac takes it.
+    static func systemGesture(type: UInt32, hidType: Int64) -> Bool? {
+        guard gestureTypes.contains(type) else { return nil }
+        return type == 30 || hidType == dockSwipeHIDType
+    }
+
     static func rebound(_ event: CGEvent, in window: NSWindow) -> NSEvent? {
         guard [.keyDown, .keyUp, .flagsChanged].contains(event.type), let native = NSEvent(cgEvent: event) else { return nil }
         let isKey = event.type == .keyDown || event.type == .keyUp
@@ -75,7 +88,8 @@ private final class SystemKeyboardTap: MacKeyboardTap {
     func start(receive: @escaping (CGEventType, CGEvent) -> Unmanaged<CGEvent>?) -> Bool {
         stop()
         self.receive = receive
-        let mask = [CGEventType.keyDown, .keyUp, .flagsChanged].reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+        let types = [CGEventType.keyDown, .keyUp, .flagsChanged].map(\.rawValue) + MacKeyboardCapturePolicy.gestureTypes
+        let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1) }
         guard let port = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
             options: .defaultTap, eventsOfInterest: mask, callback: { _, type, event, context in
                 guard let context else { return Unmanaged.passUnretained(event) }
@@ -184,6 +198,14 @@ final class MacKeyboardCapture {
     }
 
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
+        // Handle gestures before key routing: a non-key event there releases control.
+        if let dockSwipe = MacKeyboardCapturePolicy.systemGesture(type: type.rawValue,
+            hidType: event.getIntegerValueField(MacKeyboardCapturePolicy.gestureHIDTypeField)) {
+            guard dockSwipe, let view, focused(view), view.inputState?.controlling == true,
+                  view.takesSystemGestures else { return Unmanaged.passUnretained(event) }
+            view.noteSystemGesture()
+            return nil
+        }
         let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
         let code = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
         switch MacKeyboardCapturePolicy.route(type: type, keyCode: code, modifiers: flags,

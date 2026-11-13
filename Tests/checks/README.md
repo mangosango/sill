@@ -4,8 +4,9 @@ Native viewer UX checks also include `mac-chooser` (identity-based row grouping,
 confirmed-link/cancellation wiring and keyboard affordances) and
 `mac-viewer-settings` (native toolbar/window wiring, settings scope and capability
 fences, plus Swift 5 typechecking against a compile-only client fixture),
-`mac-viewer-window` (21 hidden-window policy/delegate/lifecycle checks and 12
-behavioral mutants), and `viewer-controls` (cross-file UI/surface/chooser wiring).
+`mac-viewer-window` (77 hidden-window checks of the floating session window: policy,
+delegate, borderless overrides, expansion, hover and linger, lifecycle; 56 behavioral
+mutants), and `viewer-controls` (cross-file UI/surface/chooser wiring).
 `mac-chooser --mutants` rejects eight source/policy mutations and participates in
 the shared mutant runner. These do not launch the viewer or establish rendered
 layout, fullscreen Space placement, live pairing or VoiceOver acceptance.
@@ -22,8 +23,10 @@ Synthetic CGEvents are converted but never posted. Checks cover event suppressio
 pass-through, permission/Secure Input/tap failure, active VoiceOver Control-Option and
 Caps Lock, rebound modifiers/repeats, and ordinary text through `interpretKeyEvents`.
 Scroll tests cover default/reversed directions on both axes, precise/coarse deltas,
-unphased wheel events and unchanged gesture/momentum boundaries.
-Debug and optimized builds run; all 57 behavioral mutants must be killed without
+unphased wheel events and unchanged gesture/momentum boundaries. Gesture checks cover
+Dock swipe suppression and its host/switch gates (with `iOSClient/TrackpadGestures.swift`
+compiled in); pointer-lock checks use a fake pointer boundary and move no real pointer.
+Debug and optimized builds run; all 70 behavioral mutants must be killed without
 compile errors or invalid edits. This is not physical keyboard/IME/VoiceOver, live
 clipboard, system tap or two-Mac acceptance.
 

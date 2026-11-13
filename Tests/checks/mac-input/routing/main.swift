@@ -381,6 +381,65 @@ precondition(!ownership.controlling && !tap.enabled)
 client.macLocked = false
 ownership.takeControl()
 precondition(ownership.controlling)
+
+// A Dock swipe goes to the remote Mac only while it takes gestures; other gesture events stay local.
+let dock = CGEvent(source: eventSource)!
+dock.type = CGEventType(rawValue: 30)!
+precondition(tap.receive!(dock.type, dock) == nil && ownership.controlling, "a Dock swipe is stopped locally and keeps control")
+let gesture = CGEvent(source: eventSource)!
+gesture.type = CGEventType(rawValue: 29)!
+gesture.setIntegerValueField(MacKeyboardCapturePolicy.gestureHIDTypeField, value: 8)
+precondition(tap.receive!(gesture.type, gesture) != nil && ownership.controlling, "a magnify stays local and keeps control")
+gesture.setIntegerValueField(MacKeyboardCapturePolicy.gestureHIDTypeField, value: 23)
+precondition(tap.receive!(gesture.type, gesture) == nil, "a Dock swipe's gesture event is stopped too")
+client.hostGestures = nil
+precondition(tap.receive!(dock.type, dock) != nil && ownership.controlling, "a Mac without gestures leaves the local one")
+client.hostGestures = 1
+StreamClient.gesturesOn = false
+precondition(tap.receive!(dock.type, dock) != nil, "a switched-off device leaves the local gesture")
+StreamClient.gesturesOn = true
+precondition(client.events.isEmpty && client.gestures.isEmpty, "a Dock event alone sends nothing")
+
+// Full screen locks the pointer to the picture. Only the fake boundary runs: no real pointer moves.
+var detaches: [Bool] = []
+var warps = 0
+var detachWorks = true
+input.pointerSystem = MacPointerLockSystem(detach: { detaches.append($0); return detachWorks }, warp: { _ in warps += 1 })
+ownership.release()
+precondition(!input.pointerLocked && detaches.isEmpty, "a window never locks")
+window.pretendsFullScreen = true
+ownership.takeControl()
+precondition(ownership.controlling && input.pointerLocked && detaches == [true])
+let screens = NSScreen.screens.isEmpty ? 0 : 1
+precondition(warps == screens, "the hidden pointer waits mid-window")
+client.events.removeAll()
+let move = RecordingMoveEvent()
+(move.dx, move.dy) = (-10_000, -10_000)
+input.mouseMoved(with: move)
+(move.dx, move.dy) = (64, 40)
+input.mouseMoved(with: move)
+precondition(client.events == [.pointer(.move, x: 0, y: 0), .pointer(.move, x: 0.1, y: 0.1)],
+             "locked moves follow deltas and stay in the picture")
+input.mouseExited(with: exit)
+precondition(ownership.controlling, "a locked pointer cannot leave")
+client.events.removeAll()
+input.mouseDown(with: mouse(.leftMouseDown, at: CGPoint(x: 600, y: 300)))
+input.mouseUp(with: mouse(.leftMouseUp, at: CGPoint(x: 600, y: 300)))
+precondition(client.events == [.pointer(.leftDown, x: 0.1, y: 0.1), .pointer(.leftUp, x: 0.1, y: 0.1)],
+             "locked clicks act at the drawn cursor, not the hidden one")
+ownership.release()
+precondition(!input.pointerLocked && detaches == [true, false] && warps == screens * 2, "release unlocks once")
+ownership.release()
+precondition(detaches == [true, false], "unlock is idempotent")
+detachWorks = false
+ownership.takeControl()
+precondition(ownership.controlling && !input.pointerLocked, "a failed detach does not lock")
+ownership.release()
+precondition(detaches == [true, false, true], "a failed lock needs no unlock")
+window.pretendsFullScreen = false
+detachWorks = true
+ownership.takeControl()
+precondition(ownership.controlling)
 ownership.unbind(input)
 precondition(!ownership.controlling)
 ownership.takeControl()

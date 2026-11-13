@@ -4289,7 +4289,8 @@ final class StreamClient: ObservableObject {
                 }
                 if self.macName != list.macName { self.macName = list.macName; self.loadWindowOrder() }
                 let previous = self.active
-                self.windows = list.windows
+                // Only on change: republishing an equal list rebuilds open menus (the Mac viewer's Source).
+                if self.windows != list.windows { self.windows = list.windows }
                 self.active = list.active
                 // Forget thumbnails for windows that are gone.
                 let live = Set(list.windows.map(\.id))

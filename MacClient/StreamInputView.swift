@@ -13,6 +13,12 @@ enum MacPointerGeometry {
     static func acceptsInput(keyWindow: Bool, firstResponder: Bool, connected: Bool, paused: Bool) -> Bool {
         keyWindow && firstResponder && connected && !paused
     }
+    /// A locked pointer moves by the event's deltas (points, positive down) and stays in the picture.
+    static func moved(_ point: CGPoint, dx: CGFloat, dy: CGFloat, in size: CGSize) -> CGPoint {
+        guard size.width > 0, size.height > 0 else { return point }
+        return CGPoint(x: min(1, max(0, point.x + dx / size.width)),
+                       y: min(1, max(0, point.y + dy / size.height)))
+    }
     static func phases(_ phase: NSEvent.Phase, momentum: Bool) -> [ScrollPhase] {
         var result: [ScrollPhase] = []
         if phase.contains(.began) { result.append(momentum ? .momentumBegan : .began) }
@@ -67,11 +73,46 @@ final class MacPreeditLabel: NSTextField {
 #endif
 
 #if !POINTER_POLICY_TEST
+/// Only these closures detach, hide or move the real pointer. Tests replace them.
+struct MacPointerLockSystem {
+    /// True when the pointer is in the asked state. The cursor hides only after a detach that worked,
+    /// and always shows again on reattach, so each hide has one unhide.
+    var detach: (Bool) -> Bool = { detached in
+        if detached {
+            guard CGAssociateMouseAndMouseCursorPosition(0) == .success else { return false }
+            NSCursor.hide()
+            return true
+        }
+        NSCursor.unhide()
+        return CGAssociateMouseAndMouseCursorPosition(1) == .success
+    }
+    /// Global display coordinates: origin at the top left of the main display.
+    var warp: (CGPoint) -> Void = { _ = CGWarpMouseCursorPosition($0) }
+}
+
+/// The remote cursor, drawn by the viewer while the real pointer is locked and hidden.
+final class MacLockedCursorView: NSImageView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// Attach above the existing renderer with identical bounds; call refresh when client state changes.
 /// Keyboard events use either the native text system or the existing HID forwarder.
 final class StreamInputView: NSView, NSTextInputClient {
     weak var inputState: ViewerInputState?
     var reverseScrolling = false
+    var pointerSystem = MacPointerLockSystem()
+    /// In full screen, control locks the pointer to the picture until input is released.
+    private(set) var pointerLocked = false
+    private let lockedCursor = MacLockedCursorView()
+    /// The tap saw a system gesture (Mission Control, Spaces…) in this stroke and stopped it locally.
+    private var systemGesture = false
+    private var gestures = TrackpadGestures()
+    private var touchIDs: [NSObject: Int] = [:]
+    private var nextTouch = 0
+    /// The same conditions as `sendGesture`: never stop a local gesture that the remote Mac will not get.
+    var takesSystemGestures: Bool {
+        enabled && StreamClient.gesturesOn && (client?.hostGestures ?? 0) >= TrackpadGesture.generation
+    }
     var canTakeControl: Bool {
         window?.isKeyWindow == true && client?.connected == true && client?.inputPaused == false && client?.macLocked == false
     }
@@ -212,6 +253,8 @@ final class StreamInputView: NSView, NSTextInputClient {
     private var momentum = false
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    // Clicks in the transparent title bar band belong to the remote Mac, not to a window drag.
+    override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     private var enabled: Bool {
         inputState?.controlling == true && MacPointerGeometry.acceptsInput(keyWindow: window?.isKeyWindow == true,
@@ -223,6 +266,10 @@ final class StreamInputView: NSView, NSTextInputClient {
     override init(frame: CGRect) {
         super.init(frame: frame)
         addSubview(preedit)
+        lockedCursor.imageScaling = .scaleAxesIndependently
+        lockedCursor.isHidden = true
+        addSubview(lockedCursor)
+        allowedTouchTypes = [.indirect]
         // NSWindow swallows Command-key ups; release our held keys before its dispatch.
         keyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
             guard let self, let window = self.window, event.window === window else { return event }
@@ -246,6 +293,8 @@ final class StreamInputView: NSView, NSTextInputClient {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
     deinit {
+        // Never leave the real pointer detached or hidden.
+        if pointerLocked { _ = pointerSystem.detach(false) }
         if let keyUpMonitor { NSEvent.removeMonitor(keyUpMonitor) }
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
@@ -289,7 +338,89 @@ final class StreamInputView: NSView, NSTextInputClient {
         if momentum { boundary(.momentumEnded) }
         scrolling = false
         momentum = false
+        unlockPointer()
+        touchIDs.removeAll()
+        gestures = TrackpadGestures()
+        systemGesture = false
         NSCursor.arrow.set()
+    }
+
+    /// Call after control is taken. Only full screen locks; a window keeps pointer-out release.
+    func lockPointerIfFullScreen() {
+        guard !pointerLocked, enabled, let window, window.styleMask.contains(.fullScreen) else { return }
+        if let point = MacPointerGeometry.point(convert(window.mouseLocationOutsideOfEventStream, from: nil), in: picture, clamp: false) {
+            lastPoint = point
+        }
+        // A failed detach leaves the window's pointer-out release in charge.
+        guard pointerSystem.detach(true) else { return }
+        pointerLocked = true
+        // The hidden pointer waits mid-window, away from the menu bar, Dock and hot corners.
+        if let center = globalPoint(CGPoint(x: bounds.midX, y: bounds.midY)) { pointerSystem.warp(center) }
+        placeLockedCursor()
+    }
+    private func unlockPointer() {
+        guard pointerLocked else { return }
+        pointerLocked = false
+        lockedCursor.isHidden = true
+        let rect = picture
+        if let at = globalPoint(CGPoint(x: rect.minX + lastPoint.x * rect.width, y: rect.minY + lastPoint.y * rect.height)) {
+            pointerSystem.warp(at)
+        }
+        // ponytail: a failed reattach cannot be retried here; the system reattaches when the app deactivates.
+        _ = pointerSystem.detach(false)
+    }
+    private func globalPoint(_ point: CGPoint) -> CGPoint? {
+        guard let window, let main = NSScreen.screens.first else { return nil }
+        let screen = window.convertPoint(toScreen: convert(point, to: nil))
+        return CGPoint(x: screen.x, y: main.frame.maxY - screen.y)
+    }
+    private func placeLockedCursor() {
+        guard pointerLocked else { return }
+        let image: NSImage, size: CGSize, hotspot: CGPoint
+        if let shape = client?.cursorShape {
+            (image, size, hotspot) = (shape.image, shape.size, shape.hotspot)
+        } else {
+            (image, size, hotspot) = (NSCursor.arrow.image, NSCursor.arrow.image.size, NSCursor.arrow.hotSpot)
+        }
+        if lockedCursor.image !== image { lockedCursor.image = image }
+        let rect = picture
+        lockedCursor.frame = CGRect(x: rect.minX + lastPoint.x * rect.width - hotspot.x,
+                                    y: rect.minY + lastPoint.y * rect.height - hotspot.y,
+                                    width: size.width, height: size.height)
+        lockedCursor.isHidden = false
+    }
+
+    /// The tap stopped a system gesture locally; this stroke's touches decide what the remote Mac gets.
+    func noteSystemGesture() { systemGesture = true }
+    override func touchesBegan(with event: NSEvent) { track(event) }
+    override func touchesMoved(with event: NSEvent) { track(event) }
+    override func touchesEnded(with event: NSEvent) { track(event) }
+    override func touchesCancelled(with event: NSEvent) { track(event) }
+    // ponytail: the touch recognizer is the iPad's, tuned on glass; retune its points for a Mac trackpad if strokes misfire.
+    private func track(_ event: NSEvent) {
+        for touch in event.touches(matching: [.began, .moved, .ended, .cancelled], in: self) {
+            guard let key = touch.identity as? NSObject else { continue }
+            let at = CGPoint(x: touch.normalizedPosition.x * touch.deviceSize.width,
+                             y: (1 - touch.normalizedPosition.y) * touch.deviceSize.height)
+            switch touch.phase {
+            case .began:
+                if touchIDs.isEmpty { systemGesture = false }
+                nextTouch += 1
+                touchIDs[key] = nextTouch
+                _ = gestures.down(nextTouch, at: at, time: event.timestamp, holding: !held.isEmpty)
+            case .moved:
+                if let id = touchIDs[key] { gestures.moved(id, to: at, time: event.timestamp) }
+            case .ended, .cancelled:
+                guard let id = touchIDs.removeValue(forKey: key) else { continue }
+                // A cancelled touch decides nothing, as on the iPad.
+                if touch.phase == .cancelled { gestures.cancelled(id); continue }
+                if case .gesture(let gesture, let fingers) = gestures.up(id, at: at, time: event.timestamp),
+                   systemGesture, takesSystemGestures {
+                    client?.sendGesture(gesture, fingers: fingers)
+                }
+            default: break
+            }
+        }
     }
     private func send(_ action: PointerAction, at point: CGPoint) {
         client?.sendInput(.pointer(action, x: point.x, y: point.y))
@@ -298,8 +429,9 @@ final class StreamInputView: NSView, NSTextInputClient {
         MacPointerGeometry.point(convert(event.locationInWindow, from: nil), in: picture, clamp: clamp)
     }
     private func down(_ event: NSEvent, button: Int) {
-        guard let point = location(event) else { return }
+        guard let point = pointerLocked ? lastPoint : location(event) else { return }
         if inputState?.controlling != true {
+            lastPoint = point
             inputState?.takeControl()
             return // The activation click must not also act on the remote Mac.
         }
@@ -310,7 +442,7 @@ final class StreamInputView: NSView, NSTextInputClient {
     }
     private func up(_ event: NSEvent, button: Int) {
         guard held.remove(button) != nil else { return }
-        lastPoint = location(event, clamp: true) ?? lastPoint
+        if !pointerLocked { lastPoint = location(event, clamp: true) ?? lastPoint }
         send(button == 0 ? .leftUp : .rightUp, at: lastPoint)
         cursorUpdate(with: event)
     }
@@ -321,6 +453,13 @@ final class StreamInputView: NSView, NSTextInputClient {
     override func mouseDragged(with event: NSEvent) { mouseMoved(with: event) }
     override func rightMouseDragged(with event: NSEvent) { mouseMoved(with: event) }
     override func mouseMoved(with event: NSEvent) {
+        if pointerLocked {
+            guard enabled else { releaseInput(); return }
+            lastPoint = MacPointerGeometry.moved(lastPoint, dx: event.deltaX, dy: event.deltaY, in: picture.size)
+            send(.move, at: lastPoint)
+            placeLockedCursor()
+            return
+        }
         // Drag events can arrive before the tracking area's exit notification.
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { releaseInput(); return }
         guard enabled, let point = location(event, clamp: !held.isEmpty) else { NSCursor.arrow.set(); return }
@@ -328,7 +467,7 @@ final class StreamInputView: NSView, NSTextInputClient {
         send(.move, at: point)
         cursorUpdate(with: event)
     }
-    override func mouseExited(with event: NSEvent) { releaseInput() }
+    override func mouseExited(with event: NSEvent) { if !pointerLocked { releaseInput() } }
     override func cursorUpdate(with event: NSEvent) {
         guard enabled, location(event) != nil, let shape = client?.cursorShape else { NSCursor.arrow.set(); return }
         let image = shape.image.copy() as! NSImage
@@ -339,7 +478,7 @@ final class StreamInputView: NSView, NSTextInputClient {
         client?.sendInput(.scrollGesture(phase, x: lastPoint.x, y: lastPoint.y))
     }
     override func scrollWheel(with event: NSEvent) {
-        guard enabled, let point = location(event, clamp: scrolling || momentum) else { return }
+        guard enabled, let point = pointerLocked ? lastPoint : location(event, clamp: scrolling || momentum) else { return }
         lastPoint = point
         let phases = MacPointerGeometry.phases(event.phase, momentum: false) + MacPointerGeometry.phases(event.momentumPhase, momentum: true)
         for phase in phases where phase == .began || phase == .momentumBegan { boundary(phase) }

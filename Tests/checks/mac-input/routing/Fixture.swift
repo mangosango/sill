@@ -15,7 +15,11 @@ final class StreamClient {
     var lastViewport: Viewport?
     let displayView = HEVCDisplayView(frame: .zero)
     var events: [InputEvent] = []
+    var hostGestures: Int? = 1
+    static var gesturesOn = true
+    var gestures: [TrackpadGestures.Gesture] = []
     func sendInput(_ event: InputEvent) { events.append(event) }
+    @discardableResult func sendGesture(_ gesture: TrackpadGestures.Gesture, fingers: Int) -> Bool { gestures.append(gesture); return true }
     func sendViewport(_ viewport: Viewport) { lastViewport = viewport }
 }
 struct CursorShape {
@@ -62,8 +66,22 @@ final class RecordingScrollEvent: NSEvent {
     override var momentumPhase: NSEvent.Phase { coastPhase }
 }
 
-// Pretend focus without ordering a window or activating this test process.
+// No hardware event source: a locked pointer reads only these deltas.
+final class RecordingMoveEvent: NSEvent {
+    var dx: CGFloat = 0
+    var dy: CGFloat = 0
+    override var deltaX: CGFloat { dx }
+    override var deltaY: CGFloat { dy }
+    override var locationInWindow: NSPoint { NSPoint(x: 320, y: 200) }
+}
+
+// Pretend focus and full screen without ordering a window or activating this test process.
 final class InputWindow: NSWindow {
     var pretendsKey = true
+    var pretendsFullScreen = false
     override var isKeyWindow: Bool { pretendsKey }
+    override var styleMask: NSWindow.StyleMask {
+        get { pretendsFullScreen ? super.styleMask.union(.fullScreen) : super.styleMask }
+        set { super.styleMask = newValue }
+    }
 }

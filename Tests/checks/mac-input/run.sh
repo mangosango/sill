@@ -12,7 +12,7 @@ for mode in debug release; do
   if [ "$mode" = release ]; then flags=(-O); fi
   swiftc -swift-version 5 "${flags[@]}" -D MAC_CAPTURE_POLICY_TEST -D POINTER_POLICY_TEST -D MAC_INPUT_TEST -I "$out" -L "$out" -lStreamProtocol -Xlinker -rpath -Xlinker "$(pwd)/$out" MacClient/StreamInputView.swift MacClient/MacKeyboard.swift MacClient/MacKeyboardCapture.swift iOSClient/KeyChords.swift iOSClient/TextComposition.swift Tests/checks/mac-input/main.swift -o "$out/$mode"
   "$out/$mode"
-  swiftc -swift-version 5 "${flags[@]}" -I "$out" -L "$out" -lStreamProtocol -Xlinker -rpath -Xlinker "$(pwd)/$out" MacClient/StreamInputView.swift MacClient/MacKeyboard.swift MacClient/MacKeyboardCapture.swift MacClient/ViewerInputState.swift MacClient/MacClipboard.swift iOSClient/KeyChords.swift iOSClient/TextComposition.swift Tests/checks/mac-input/routing/{Fixture,main}.swift -o "$out/routing-$mode"
+  swiftc -swift-version 5 "${flags[@]}" -I "$out" -L "$out" -lStreamProtocol -Xlinker -rpath -Xlinker "$(pwd)/$out" MacClient/StreamInputView.swift MacClient/MacKeyboard.swift MacClient/MacKeyboardCapture.swift MacClient/ViewerInputState.swift MacClient/MacClipboard.swift iOSClient/KeyChords.swift iOSClient/TrackpadGestures.swift iOSClient/TextComposition.swift Tests/checks/mac-input/routing/{Fixture,main}.swift -o "$out/routing-$mode"
   "$out/routing-$mode"
 done
 # The detached label test above exercises rendering; retain the native callback wiring too.

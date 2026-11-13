@@ -48,5 +48,6 @@ final class ViewerInputState: ObservableObject {
         }
         captureFailure = nil
         controlling = true
+        view.lockPointerIfFullScreen()
     }
 }

@@ -2477,12 +2477,21 @@ existing remote HID/text path, not the local menu bar. **Release input first** t
 local Settings, fullscreen, quit or disconnect shortcuts. Active local VoiceOver's
 Control-Option and Caps Lock navigation releases capture and stays local. Secure Input,
 lost permission or a disabled tap releases control and shows an explanation; capture
-never automatically restarts. Media/power keys and system Mission Control/Exposé
-trackpad gestures are not captured. No private WindowServer API is used.
+never automatically restarts. Media/power keys stay local. Mission Control, App Exposé,
+Spaces, Launchpad and Show Desktop trackpad gestures are stopped locally and sent to a
+remote Mac that takes gestures; this reads undocumented gesture event numbers through the
+same public event tap, and pinch zoom, smart zoom and rotate are not forwarded.
+
+The session window works like iPhone Mirroring's: it is just the picture, and every edge
+and corner resizes it. Move the pointer just above the picture, where a title bar would be,
+to show the frame with the traffic lights, the title, Source, Control Remote Mac and
+Session Actions. It hides when the pointer leaves, or 3 seconds later after a click in it.
+For the Desktop, the window keeps the remote display's shape.
 
 Use the green window control or, after releasing input, **Control–Command–F** for
-native full screen. Move the pointer to the top edge to reveal the toolbar; after
-release, local resume/exit controls stay available. Escape goes to the remote Mac
+native full screen. In full screen, control locks the pointer to the remote picture:
+only **Control–Option–Command–K** releases it. After release, the picture dims under glass
+controls at the top, including Exit Full Screen. Escape goes to the remote Mac
 while controlling it. Candidate panels, physical shortcut/IME delivery and
 assistive-technology behavior still require live acceptance.
 

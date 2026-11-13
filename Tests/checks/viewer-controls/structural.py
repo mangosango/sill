@@ -8,7 +8,7 @@ window = (root / 'MacClient/ViewerWindow.swift').read_text()
 for action in ['client.select(.desktop)', 'client.select(.window(window.id))',
                'client.launch(bundleID: app.bundleID)', 'client.transferLocalClipboard()',
                'client.setSoundMuted($0)']:
-    assert 'session.input.release(); ' + action in app, action
+    assert 'session.input.release(); session.' + action in app, action
 assert 'func disconnect() { input.release(); client.disconnect() }' in app
 assert 'releaseInput()\n            guard canEditRemote' in settings
 assert 'client.changeSettings(change(value))' in settings
@@ -22,6 +22,7 @@ for guard in ['client.remoteRoute != nil', 'takesDirectWireless != true',
               'it does not transfer local text.']:
     assert guard in settings, guard
 assert 'NSPasteboard' not in app + settings
+assert 'override var mouseDownCanMoveWindow: Bool { false }' in (root / 'MacClient/StreamInputView.swift').read_text()
 assert 'send(.changeSettings' not in app + settings
 assert '.onDisappear' not in app, 'View transitions are not session close'
 assert 'NSWindow.willCloseNotification' in window

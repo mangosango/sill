@@ -85,6 +85,19 @@ policy is superseded by the following implementation:
   both VoiceOver and production-path coverage fixes. Actual taps and TCC transitions
   were not exercised; see HISTORY and DEVELOPMENT for operator acceptance.
 
+## Floating window and immersive full screen (2026-11-12 to 13)
+
+Sang's later request supersedes the toolbar and persistent released-controls policy above.
+The session window works like iPhone Mirroring's: a borderless window that is just the
+picture until the pointer goes to where the title bar would be. Then the window grows by a
+material frame with the traffic lights, the title and the controls, and shrinks back when
+the pointer leaves (3 seconds later after a click in the title bar). For the Desktop, the
+window keeps the remote display's shape. In full screen the controls float as a glass
+capsule over a dimmed picture while input is released, and control locks the pointer to
+the picture until Control-Option-Command-K. Notices sit on glass at the bottom. Dock swipes
+go to the remote Mac as kind 28 gestures. Details and the untested list: HISTORY.md,
+2026-11-12 to 13.
+
 ## Verification and remaining acceptance
 
 Original redesign verification (2026-11-04; before the capture follow-up above):

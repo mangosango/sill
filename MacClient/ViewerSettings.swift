@@ -158,7 +158,7 @@ private struct ViewerSettingsForm: View {
             Section("Keyboard and Control") {
                 Text("Click the remote picture or choose Control Remote Mac in the session toolbar to send input. The first click takes control without clicking anything on the remote Mac.")
                 Text("Control–Option–Command–K or moving the pointer outside the remote view releases input. Opening Settings or leaving the stream’s keyboard focus also releases held keys and buttons.")
-                Text("Keyboard control requires Accessibility permission on this Mac. While controlling, Command–Tab, Command–Q, Command–Space and app shortcuts go to the remote Mac. Release input before using local shortcuts such as Command–Comma for Settings. Active VoiceOver’s Control–Option and Caps Lock navigation stay local; system trackpad gestures and media keys are not captured.")
+                Text("Keyboard control requires Accessibility permission on this Mac. While controlling, Command–Tab, Command–Q, Command–Space and app shortcuts go to the remote Mac. Release input before using local shortcuts such as Command–Comma for Settings. Active VoiceOver’s Control–Option and Caps Lock navigation stay local. Mission Control, App Exposé, Spaces, Launchpad and Show Desktop trackpad gestures go to the remote Mac when it supports them; media keys stay local. In full screen, the pointer stays on the remote Mac until you release input.")
                     .foregroundStyle(.secondary)
             }
         }

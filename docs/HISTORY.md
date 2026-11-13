@@ -7,6 +7,92 @@ comments that say "CLAUDE.md, Current step" or "the Current step" mean this file
 
 ## Current step
 
+### Viewer floating window, full screen pointer lock and system gestures (2026-11-12 to 13)
+
+Sang asked for a session window like iPhone Mirroring's, with the title bar and controls
+hidden until the pointer goes to the title bar; a pointer locked to the stream in full
+screen, so only the release chord gets out; controls over the picture in full screen while
+input is released; and trackpad gestures captured for the remote Mac. He then tuned the
+window live over several rounds on two Macs. This supersedes the UX plan's native-toolbar
+and persistent released-controls policy.
+
+- Floating window. The session window has no title bar and a clear background, and the
+  picture has 10 pt corners. A titled window cannot do this: the window server draws a
+  border around every titled window, even a clear one. iPhone Mirroring avoids that with
+  SwiftUI SPI (`windowContentShape`), which is not public.
+- Hidden frame: the window is just the picture, so every edge and corner resizes it.
+  Moving the pointer to where the title bar would be shows the frame. That spot is above
+  the picture and outside the window, so mouse-moved monitors watch for it; watching
+  moves needs no permission. It starts 6 pt above the picture, so the top edge and corners
+  still resize. The top of the picture itself does not show the frame.
+- Showing: the window grows by the frame (8 pt sides and bottom, a 38 pt title bar) and
+  the picture's inset grows with it in the same pass, so the picture does not move. An
+  `ultraThinMaterial` frame (iPhone Mirroring's material) grows from behind the picture,
+  and the traffic lights, the centered title, Source, Control Remote Mac and Session
+  Actions slide and fade out with it. While the window is inactive, the frame is solid.
+- Hiding: leaving the title bar hides the frame at once. After a click in the title bar,
+  the frame stays for 3 seconds after the pointer leaves. An open menu from the bar keeps
+  it. The frame's corners go from 18 pt to the picture's 10 pt as it hides; the window
+  shrinks back to the picture 0.4 seconds later. A live resize never shows or hides it.
+- Shape: for the Desktop source, the window keeps the remote display's shape, so the
+  picture has no black bars. Each live resize follows one dimension, chosen from its first
+  change; choosing again for each step made the window flicker between two sizes. A
+  remote window source takes any shape, since the remote window fits the viewer.
+- Borderless mechanics (`ViewerFloatingWindow`): without a title bar, SwiftUI's window
+  refuses key status and Close and Minimize beep. Overrides on the window's own class
+  (key and main status, `performClose` asking `windowShouldClose` first,
+  `performMiniaturize`, `toggleFullScreen`) apply to adopted windows only. The class is
+  never swapped: AppKit's title bar observes the window with KVO, and a swapped class
+  crashed on its removal. Full screen gets the title bar back first and holds it until
+  the transition ends.
+- Traffic lights: the system's own buttons (`standardWindowButton(_:for:)`) in a view that
+  answers `_mouseInGroup:`, the undocumented hook a title bar uses to show their symbols.
+  If a later macOS drops it, the buttons still work, without the hover symbols.
+- Not `glassEffect` for the frame: it draws a rim and shadow outside its shape, which
+  showed around the hidden frame and was cut off at the window's edge.
+- Full screen: a black background, and the glass capsule (title, Source, Control, Session
+  Actions, Exit Full Screen) over a dimmed picture whenever input is released; it hides
+  while controlling. Taking control detaches the pointer
+  (`CGAssociateMouseAndMouseCursorPosition`), hides it and parks it mid-window, so it
+  cannot reach the menu bar, the Dock, hot corners or another display. Moves use event
+  deltas, clamped to the picture; the viewer draws the remote cursor. Every release path
+  reattaches, warps the pointer to the drawn cursor and shows it. A failed detach does not
+  lock.
+- Menus: the client publishes link statistics every second, and each publish rebuilt the
+  session menus and closed any open submenu. They now read `ViewerMenuModel`, a snapshot
+  that publishes only when what they show changes. `StreamClient` also assigns its window
+  list only when it changes (shared with iOS: fewer redraws there too).
+- The chooser keeps its title: only the session ignores the safe area.
+- Notices (recovery, settings problems, clipboard, capture failure, first-use hint) are
+  glass cards at the bottom, so they never cover the remote menu bar.
+- System gestures: while controlling, the existing session tap also sees WindowServer
+  gesture (29) and Dock control (30) events. Dock swipes (type 30, or 29 with field 110 = 23,
+  the values Mac Mouse Fix posts) are stopped locally only when the remote Mac takes
+  gestures and `Sill.trackpadGestures` is on. The view's own `NSTouch` stream feeds the
+  iPad's `TrackpadGestures` recognizer, and a decided stroke goes as kind 28, the host's
+  existing Mission Control, App Exposé, Spaces, Apps and Show Desktop. No protocol change.
+  Two-finger pinch zoom, smart zoom and rotate are not forwarded: the host has no way to
+  post them.
+
+Verified offline: mac-viewer-window (77 checks, 56/56 mutants, with a hidden AppKit
+fixture for the borderless overrides, expansion, hover and linger); mac-input with routing
+checks for gesture suppression, host/switch gating, locked deltas, clamping, locked clicks,
+idempotent unlock and failed detach, through a fake pointer boundary (70/70 mutants);
+mac-pointer; viewer-controls; `Tests/checks/run-all.sh`. Developer ID builds (0.6.1, 1312).
+
+Verified live by Sang (signed build, two Macs, macOS 27): no border or faint rectangle
+around the hidden frame, the shadow follows the frame, the picture does not move as the
+frame shows and hides, typing and Command-W/Command-M, the hover symbols on all three
+traffic lights, edge and corner resizing with the frame hidden, no resize flicker, full
+screen entry, exit, dimming and controls, and both window titles.
+
+**Untested, for Sang**: the material and capsule fallbacks on macOS 14/15; full screen
+pointer lock on two displays; whether macOS 27 still routes Dock swipes through a session
+tap as types 29/30 (Mac Mouse Fix's macOS 27 path uses an attached HID event instead),
+whether stopping them stops the local action, and whether the view's touches arrive,
+uncancelled, during a system swipe (if they are cancelled, the local gesture is stopped
+and nothing is sent); VoiceOver on the borderless window and its traffic lights.
+
 ### Viewer reverse-scrolling preference (2026-11-04)
 
 Committed the preceding native viewer UX/click-to-control/system-key capture work as
