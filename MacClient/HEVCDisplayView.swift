@@ -237,6 +237,9 @@ final class HEVCDisplayView: NSView {
 
     /// A locked Mac (docs/locked-mac-plan.md): the picture removed at once, nothing shown until the next
     /// keyframe, the format kept. On `renderQueue` (the client's network queue), as `apply` and `enqueue`.
+    /// The shared client freezes the picture for iOS's Picture in Picture, which the Mac never has.
+    func setFrozen(_ on: Bool) {}
+
     func blank() {
         waitingForKeyframe = true
         displayLayer.flushAndRemoveImage()

@@ -2,7 +2,7 @@
 
 The file map, the commands and test hooks, and the full compatibility floor. These were sections
 of CLAUDE.md until 2026-11-03; references to "CLAUDE.md, Layout" or "Build and run" mean this
-file. The work log is [HISTORY.md](HISTORY.md).
+file. The work log is [HISTORY.md](HISTORY.md), and main's since 2026-11-12 is in [steps/](steps/).
 
 ## Layout
 
@@ -55,7 +55,14 @@ file. The work log is [HISTORY.md](HISTORY.md).
   messages the host had read on the connection). `Gesture.swift` —
   `TrackpadGesture` (kind 28, device → host: a three- or four-finger gesture
   by name, and its fingers), sent only to a host whose `WindowList.gestures`
-  is 1 or more. `Clipboard.swift` — `Clipboard` (kind 32, both ways: `text`,
+  is 1 or more. `DesktopDisplays.swift` — the Desktop's stops (kind 47 and
+  `WindowList.desktopDisplays`, `desktopDisplay`, `desktopDisplayNames`; issue
+  #91, PR #173, docs/virtual-desktop-plan.md §1): which displays are stops and
+  their order (the main display first, then to its right, wrapping), the stop
+  shown (the main display while locked; the choice by UUID for the session and
+  30 s after), the next, the rate held to a stop's refresh rate, where input
+  lands, the pointer's target, and the device's button (its label, dots or
+  "3/7", VoiceOver's words); pure, `Tests/checks/desktop-displays`. `Clipboard.swift` — `Clipboard` (kind 32, both ways: `text`,
   `image` reserved for a later generation, a device's `stop`) and its 256 KB
   cap; `ClipboardPolicy.swift` — the clipboard's rules for both ends (what a
   device's message asks of the host and the rate, which a stop never meets;
@@ -126,10 +133,20 @@ file. The work log is [HISTORY.md](HISTORY.md).
   log file),
   `WindowCatalog` (polls windows and thumbnails only while a client is
   connected; icons; installed apps in the background; when its last look
-  landed, `lookAge`), `CatalogLook` (whether a capture may be built from that
+  landed, `lookAge`; the Desktop's stops from that look, `desktopCandidates`,
+  the one shown, `display` and `desktopDisplayID`, the choice a device stepped
+  to and its span, `mainOnly` while locked, `mainDisplay` for the sound;
+  DesktopDisplays), `DesktopDisplaysHook` (TEST ONLY: SILL_TEST_DISPLAYS, a
+  synthetic host's stops in place of this Mac's), `CatalogLook` (whether a capture may be built from that
   look or the catalog looks again first: its display no longer active, none, no
   look, or older than two polls; the Desktop's lines and its one more try's;
-  pure, `Tests/checks/catalog-look`; the black screen of 2026-10-28), `InstalledApps`
+  pure, `Tests/checks/catalog-look`; the black screen of 2026-10-28),
+  `CatalogWindows` (which of ScreenCaptureKit's on-screen windows it lists: an
+  app's own, by owner, layer, size and process, and no helper's:
+  LayerProbeParent, macOS's own interface (Stage Manager's WindowManager, the
+  Dock, Control Center, SystemUIServer, Notification Center, the screenshot
+  tools), a tool's untitled window; one log line per owner it leaves out, #114;
+  pure, `Tests/checks/catalog-windows`), `InstalledApps`
   (where those are found: each applications folder and the folders inside it,
   at any depth (#135's), never inside a bundle, another package or a
   framework, and never through a link inside a scanned folder (one given that
@@ -146,7 +163,8 @@ file. The work log is [HISTORY.md](HISTORY.md).
   full-screen window's crop keeps the panel's shape (`windowSize`); pure,
   `Tests/checks/capture-scale`), `SyntheticCapture` (test pattern for
   `--synthetic`; SILL_TEST_PATTERN=noise adds a square of noise,
-  SILL_TEST_PATTERN=picture:<path> shows a still picture instead,
+  SILL_TEST_PATTERN=picture:<path> shows a still picture instead, under
+  SILL_TEST_DISPLAYS the shown stop's number and name drawn on it,
   SILL_TEST_STILL_AFTER=<s> sends no frame from s seconds on, as a window that
   stopped changing), `HEVCEncoder` (VideoToolbox with one frame inside, a
   one-slot mailbox behind it and a hang watchdog; hardware or software; says
@@ -477,11 +495,13 @@ file. The work log is [HISTORY.md](HISTORY.md).
   `Scripts/asc.swift` (Foundation and CryptoKit; compiled with swiftc or run as a
   script): App Store Connect's API for TestFlight with an ES256 token from the
   .p8 key (`groups`, `build-state`, `whats-new`, `distribute`: wait for
-  processing up to 90 minutes, What to Test, every internal group, the public
+  processing up to 90 minutes, What to Test (`distribute` only to a build with
+  none, in any language, unless `--replace-whats-new`; `whats-new` always
+  replaces), every internal group, the public
   beta group only with `--public-beta` and `SILL_NIGHTLY_PUBLIC_BETA=true` in its
   environment, Beta App Review only right after that); the token goes only to
-  api.appstoreconnect.apple.com (or a stand-in on 127.0.0.1 in tests) and is
-  never printed.
+  api.appstoreconnect.apple.com (or a stand-in on 127.0.0.1 in tests:
+  `Tests/checks/asc`) and is never printed.
   `Scripts/make-dmg.sh --sign IDENTITY APP DMG` (`-` for ad hoc) makes the
   image: an HFS+ volume "Sill" (not APFS: Finder names the background by an
   HFS+ alias record, and Finder-made and current third-party images are
@@ -727,7 +747,31 @@ file. The work log is [HISTORY.md](HISTORY.md).
   view holds the keyboard for a hardware keyboard and when it is the person's
   own; and `PointerScroll`, where a trackpad's or a wheel's scroll goes, the
   pointer's place as it began, and its readings added up; pure,
-  `Tests/checks/hardware-keyboard`; pbxproj AC01/FC01), `KeyChords`
+  `Tests/checks/hardware-keyboard`; pbxproj AC01/FC01), `DeviceIdlePolicy` (when Sill
+  holds the device's own auto-lock off: while a window the person can see streams,
+  until 10 minutes after the person last used it, and what counts as the person's
+  use; pure, `Tests/checks/device-idle`; pbxproj AE30/FE30; StreamScreen's
+  `DeviceIdleTimer` carries it out, PR #230), `PictureInPicturePolicy` (Picture in Picture,
+  #291: when a window's picture is offered and which window, what counts as watched, heard and
+  running while it shows, the pause, what ends it, the Lifecycle; pure,
+  `Tests/checks/picture-in-picture`; pbxproj A291/F291) and `PictureInPicture` (AVKit's
+  controller on the display layer, its delegates, `PictureInPictureHub`; A29A/F29A),
+  `FullScreenPolicy` (full screen, docs/full-screen-plan.md: Sill's controls hidden from Settings › Full
+  Screen, the picture in the screen's room; the swipe in from the left edge, `EdgeSwipe` (a finger landing
+  within max(24 pt, the left safe-area inset), judged after 8 pt: right and no steeper than 45°, let go by
+  0.3 s), its finish or spring back, `EdgeReveal` (min(a third of the width, 80 pt), a 300 pt/s flick
+  after 12, back at 200), the preview's cut, `RevealCut` (each layout's picture's place, from its own
+  geometry with DuoPosture's split and PhonePortraitLayout), the pointer's dwell at the edge, when it is
+  offered, when the controls come back by themselves, the shake (`Sill.shakeToShowControls`), the Settings
+  rows' place, the hint, the room, the words; pure, `Tests/checks/full-screen`; pbxproj A279/F279),
+  `RevealEdgePan` (the swipe in's recognizer, a UIPanGestureRecognizer of Sill's on its window, only while
+  hidden, which other recognizers wait for it, `EdgeRecognizers.waits` (never one that only watches,
+  `WatchesTouchesOnly`), where a held stroke landed, `heldLanding`, for the picture's scroll, and a stroke
+  it held until its lift, `releasedAtLift`; UIKit only, so Tests/touchrig compiles it; A27B/F27B) and `FullScreen`
+  (`FullScreenEdges`, which puts it and a hover on the window and says whether the window covers the screen
+  and its safe area, `FullScreenSystem` for the status bar, the home indicator and the deferred left edge, the
+  shake through `UIWindow.motionEnded`, the hint, the swipe in's preview cut, `RevealCutMask`, the hidden
+  picture's element, DEBUG `FullScreenDebug`; A27A/F27A), `KeyChords`
   (`KeyModifiers`; a
   shortcut with its modifiers' own keys pressed around it, the Spotlight key's
   ⌘Space, the trackpad's modifier keys around a click; `ForwardedKeys`, a
@@ -747,7 +791,10 @@ file. The work log is [HISTORY.md](HISTORY.md).
   touch and scroll lands through it: PR #196, issue #65), `ThumbnailHold` (how long a window's thumbnail is
   held before its lights show and its drag can start: 0.2 to 2 s in tenths, 0.5 s unless changed, the words
   of the Settings panel's stepper; pure, `Tests/checks/thumbnail-hold`; WindowStrip and HoldDragOverlay
-  in StreamScreen.swift take it, issue #113),
+  in StreamScreen.swift take it, issue #113), `VersionLabel` (this app's version and build as its bundle says
+  them, CFBundleShortVersionString and CFBundleVersion cleaned: "Sill 0.6.2 (1400)", spoken "Sill version 0.6.2,
+  build 1400"; pure, `Tests/checks/version-label`; pbxproj AE01/FE01; `VersionLine` in ContentView.swift shows it,
+  with Copy on a long press, at the bottom of the connect screen's footer and as the Settings panel's last line),
   `HEVCDisplayView` (shared display view, the one pointer sprite + DEBUG HUD;
   the picture's interruptions on the network queue: `checkLayer` flushes a layer
   that failed, could not decode a frame or needs a flush to decode again, at each
@@ -775,7 +822,9 @@ file. The work log is [HISTORY.md](HISTORY.md).
   12 pt clear, both inside the gap); one scroll view
   whatever the fit (`ColumnOverFooter`, measuring a hidden copy of the
   footer), so a fit that changes never builds the card anew (its fields, the
-  camera); + DEBUG harness, and `InputScript`, `-SillInputScript`'s steps),
+  camera); in the footer, at its trailing edge on a line it already has wherever
+  it fits there, this app's version (`VersionLine`; docs/version-label-plan.md);
+  + DEBUG harness, and `InputScript`, `-SillInputScript`'s steps),
   `SillLinks`
   (the site's addresses, written once; getsill.app is live since 2026-09-25;
   and the App Store address for a Mac's update notice, the App Store Connect
@@ -784,16 +833,19 @@ file. The work log is [HISTORY.md](HISTORY.md).
   (the Mac's settings with this device's unanswered picks; pure logic, checked
   with swiftc), `HostSettingsPanel` (the Settings panel; the route line, Away
   from home, the away line in the header, the link's callout and its button,
-  the footnote, the slow-link callout for older Macs), `AwayCopy` (every
+  the footnote, the slow-link callout for older Macs; its last line this app's
+  version, `VersionLine`), `AwayCopy` (every
   string of away from home and the link on the device, which callout shows,
   and `LinkLine`, the stream screen's line over time; pure,
   `Tests/checks/away-copy`; pbxproj A801/F801). Remote access: `DeviceIdentity`
   (the device key in the Keychain, carrying out `DeviceKeyPolicy`),
-  `SavedMacs` (pure; `homeTLS` and `revoked` for pairing at home; with
-  `DeviceKeyPolicy`, the device key's rules: when the launch clears the saved
+  `SavedMacs` (pure; `homeTLS` and `revoked` for pairing at home; the VPN
+  addresses a later list lacks, `remembering` and `remembered`, 90 days, four;
+  with `DeviceKeyPolicy`, the device key's rules: when the launch clears the saved
   Macs, when a key is made, when a key made is used; `Tests/checks/remote-rules`'
   `launch.swift`, #140),
-  `RemoteDialPolicy` (pure), `RemoteConnector`, `StreamClient+Remote`
+  `RemoteDialPolicy` (pure: the dial order, a remembered address's second group,
+  what a failure means, `failed`, and `RemoteCopy`'s words), `RemoteConnector`, `StreamClient+Remote`
   (pairing, remote dials, the reconnect order, links), `StreamClient+Home`
   (pairing at home: `DeviceTLS`, the one TLS builder for every connection to
   a Mac, the session gate at the first window list, the ask, the cable's
@@ -900,6 +952,12 @@ file. The work log is [HISTORY.md](HISTORY.md).
   and reason there before the next upload. New files need their four pbxproj entries by hand.
   Swift 5 language mode.
 - `docs/BRIEF.md` — product decisions, competition, scope, risks.
+- `docs/steps/` — what each piece of work did: one file per branch, release or finding,
+  `<date>-<branch>.md` (the date its work began), written by the branch that does the work and by
+  nobody else (CLAUDE.md, "Steps"); `README.md` lists the ones that were this file's "Current step"
+  until 2026-11-12, in their old order, frozen. `Scripts/steps.sh` makes this branch's (`new`), lists
+  the newest (`list`) and finds one (`find 349`); `Scripts/migrate-notes.py` moves the notes of a
+  branch opened before then out of CLAUDE.md, the checks' table and ci.yml once it merges main.
 - `docs/DEVELOPMENT.md` — building, running and testing from source; the
   README's developer material until 2026-09-25, so a plan's "README" means a
   section there: the toolchain, make-app.sh, Sill.app's menu and Quality, the
@@ -930,7 +988,9 @@ file. The work log is [HISTORY.md](HISTORY.md).
   arm64, `CODE_SIGNING_ALLOWED=NO`; with Xcode 27.1, its beta while the image
   has no 27.1 release), and the CLI's paths that exit before the
   host starts (`--internet` alone, exit 2; `--print-reachability`); by hand
-  with "mutants", each check's mutants in a job of its own. `release.yml`: a
+  with "mutants", each check's mutants in a job of its own (up to 120 minutes), the checks read
+  from the folders by `Tests/checks/mutant-checks.py`, which stops the run on a list that is empty
+  or leaves one out. `release.yml`: a
   pushed tag `v*`, or by hand with one; verify only (the tag, the checks,
   `make-app.sh` signed ad hoc, zipped, and `make-dmg.sh`'s image of it, ad hoc
   too, as two artifacts) unless the repository
@@ -964,7 +1024,8 @@ file. The work log is [HISTORY.md](HISTORY.md).
   artifacts), Sill for iPhone and iPad (`release-ios.sh --build-number`, the
   upload with `SILL_TESTFLIGHT_IN_CI`, then `asc.swift distribute`: every
   internal group, the public beta group only while `SILL_NIGHTLY_PUBLIC_BETA` is
-  `true`); only main builds: both jobs run in the environment `nightly` (only
+  `true`, the night's notes replacing What to Test only on a build that run
+  uploaded, `--replace-whats-new` after the upload step's `uploaded=true`); only main builds: both jobs run in the environment `nightly` (only
   main, no reviewer), which holds the nine secrets, none of them a repository
   secret (docs/release-checklist.md, "Nightlies", "Secrets and variables").
   `.github/actions/select-xcode` —
@@ -975,60 +1036,18 @@ file. The work log is [HISTORY.md](HISTORY.md).
   or beta; without one, CI warns and takes the newest Xcode there and a
   release (`fallback: false`) fails (CI only: it runs `sudo xcode-select`). The runner's `bash` is 3.2: try `run:`
   steps with `/bin/bash`. Actions are pinned by commit hash.
-- `Tests/checks/` — the pure checks, a folder each: `main.swift`, `run.sh`
-  (compiles the app's files it names with swiftc into `.build/checks/<name>/`
-  and runs; `--mutants` runs `mutants.py`, passing only when every mutant is
-  caught), and `build.sh` where a check compiles a module (StreamProtocol's
-  sources with `import StreamProtocol` stripped), or a `module.txt` naming the
-  files `module.py` compiles as one module (pairing at home's checks):
-  `addresses`, `ask-limits`, `audio-codec` (the host's AAC-ELD encoder,
-  packetizer and tone with the device's decoder, in memory; AudioToolbox only),
-  `audio-packetizer`, `audio-playout` (iOSClient's AudioPlayout on a simulated
-  clock), `away-copy`, `away-quality`, `away-wire`, `cable-link`, `capture-scale`, `catalog-look`, `clientlink`,
-  `clipboard`, `compatibility`,
-  `connection-list`, `device-gate`, `display-wake`, `dmg-layout` (Scripts/dmg-layout's `.DS_Store` and alias
-  writer, against Finder's own layout of the file, make-dmg.sh's layout
-  arguments and the SVG's size and edge), `door-policy`, `duo` (DuoPosture;
-  `tour` and `phone-portrait` take the Duo's real sizes too), `encoder-mailbox`,
-  `encoder-slowstate`, `fence`, `firewall` (FirewallRule), `gesture-chords`, `gestures`, `goodbye`,
-  `hardware-keyboard` (iOSClient's HardwareKeyboardPolicy),
-  `encoder-slowstate`, `fence`, `gesture-chords`, `gestures`, `goodbye`,
-  `hardware-keyboard` (iOSClient's HardwareKeyboardPolicy and PointerScroll),
-  `home-device`, `home-model`, `home-records`, `home-txt`, `installed-apps`
-  (InstalledApps on a fake applications folder), `key-repeat` (the host's
-  KeyRepeat with KeyStrokes, against a model of InputInjector's glue and a
-  clock), `key-strokes` (the
-  host's KeyStrokes and the device's KeyChords, against a model of the Mac's
-  HID state table and of a Mac from before), `keychain`, `keyframe-recovery` (iOSClient's
-  KeyframeRecovery, against a model of the event history), `ledger`, `link-judge`,
-  `lock-policy` (the host's LockPolicy and StreamProtocol's LockedMac, with a copy of
-  the coordinator's glue), `menu-state` (iOSClient's MacMenuState), `menus` (the host's MenuFormat and
-  MenuPolicy, and MacMenu.swift's JSON), `message-reader`, `origin`,
-  `pairing-address`, `pairing-sharing` (Sill.app's `PairingWindowSharing`),
-  `phone-portrait`, `pointer-control`, `pointer-presence`,
-  `pointer-watch`, `policy` (with its `home.swift`), `protocol`,
-  `remote-rules` (with its `home.swift`), `settings-window` (Sill.app's
-  `SettingsWindowFit`), `stream-zoom` (iOSClient's StreamZoom), `test-host` (Sill.app's AppIdentity with
-  IdentityStorePlan), `text-composition` (iOSClient's TextComposition with
-  StreamProtocol's Input.swift), `tour`, `update-policy`, `virtual-display-api`
-  `SettingsWindowFit`), `stream-zoom` (iOSClient's StreamZoom), `text-composition` (iOSClient's TextComposition with
-  StreamProtocol's Input.swift), `thumbnail-hold` (iOSClient's ThumbnailHold), `tour`, `update-policy`, `virtual-display-api`
-  (VirtualDisplay.swift whole, as VirtualDisplayProbe compiles it: its surface,
-  `SettingsWindowFit`), `stream-zoom` (iOSClient's StreamZoom), `text-composition` (iOSClient's TextComposition with
-  StreamProtocol's Input.swift), `tour`, `update-policy`, `viewport-bounds`
-  (StreamProtocol's ViewportBounds: what a host takes of a device's viewport; and
-  ClientStats.lateSince),
-  `virtual-display-api` (VirtualDisplay.swift whole, as VirtualDisplayProbe compiles it: its surface,
-  TypeEncoding and Runtime.method's decision, on classes made at run time, against
-  the encodings measured on Apple silicon and reported from Intel machines),
-  `window-restore` (WindowRestore's rule and sequences against a stand-in Mac,
-  with a copy of the coordinator's glue around them) (the two encoder checks refuse a binary that links
-  VideoToolbox). `run-all.sh
-  [--mutants] [-v] [name…]` runs them and exits
-  with the number that failed (a folder whose `run.sh` is not executable
-  fails); `common.sh` is sourced by each `run.sh`; `README.md` lists what each
-  compiles and the checks that belong to open branches. A change to a checked
-  file updates its check (and a mutant's pattern) in the same commit.
+- `Tests/checks/` — the pure checks, a folder each, which says what it checks and what it compiles in
+  its own `README.md`: `main.swift`, `run.sh` (compiles the app's files it names with swiftc into
+  `.build/checks/<name>/` and runs; `--mutants` runs `mutants.py`, passing only when every mutant is
+  caught), and `build.sh` where a check compiles a module (StreamProtocol's sources with `import
+  StreamProtocol` stripped), or a `module.txt` naming the files `module.py` compiles as one module.
+  `list.sh` prints every check with what it checks (no table is kept by hand); `run-all.sh
+  [--mutants] [-v] [name…]` runs them and exits with the number that failed (a folder whose `run.sh`
+  is not executable fails); `common.sh` is sourced by each `run.sh`; `mutant-checks.py` gives CI the
+  checks with mutants, read from the folders; `repo-rules` fails a check folder without its
+  README.md, a static mutants list in ci.yml, and a step entry written back into CLAUDE.md;
+  `HISTORY.md` is the old README with its table, frozen. A change to a checked file updates its
+  check (and a mutant's pattern) in the same commit.
 - `Tests/touchrig/` — the touch rig (docs/trackpad-gestures-plan.md §9.2): the
   real `TrackpadView.swift` and `InputOverlay.swift` in a scratch simulator
   app, driven with synthesized touches (`TouchSynth`, private UIKit calls, test
@@ -1036,7 +1055,15 @@ file. The work log is [HISTORY.md](HISTORY.md).
   off] NAME` builds and runs it on a simulator of its own
   (`SILL_TOUCHRIG_SIM`), `compare.py` judges a run against the surfaces
   before, and a stroke made right after a gesture against the same stroke
-  made fresh.
+  made fresh; `compare.py --all` every stroke against main's, and, where the
+  sources have full screen's RevealEdgePan (on the rig's window),
+  `compare.py --edge` its strokes at the left edge (`RIG_ONLY=edge`): the
+  controls shown, every stroke main's exactly; hidden, a swipe in from the
+  band brings them and sends nothing, anything else goes on whole and in order
+  (`RIG_ONLY=reveal RIG_ORIENT=landscape`: the hidden strokes with the scene
+  on its side, on an iPhone-idiom simulator); `RIG_TRACE=1` logs every
+  recognizer's state (and the swipe in's trace). It compiles StreamProtocol
+  whole, and DuoPosture.swift, as the surfaces need.
 - `Tests/duorig/` — TEST ONLY, private interfaces, simulator only: folds and
   turns the iPhone Duo simulator with Device Hub's own events (usage page
   0xFF61, usage 0x5B, an IOCFSerialize dictionary from
@@ -1054,6 +1081,19 @@ file. The work log is [HISTORY.md](HISTORY.md).
   a key: `13:down,wait:2,13:up`), `run.sh UDID point SCRIPT`;
   only a booted simulator of your own, by UDID (its README has what it showed:
   after its keys UIKit there counts a hardware keyboard for good).
+- `Scripts/harness-photos/` — the DEBUG harness photographed on the agents' shared simulators,
+  never one an agent makes for itself: `Scripts/agent-simulators.sh create` makes them once ("Sill
+  agents Duo", iPhone Duo on iOS 27.1, and "Sill agents iPad", iPad Pro 13-inch (M5) on iOS 27.0,
+  whose 27.1 runtimes take only the Duo) and `list` shows their state and size;
+  `Scripts/harness-photos.sh CASES [--commit REV] [--baseline REV] [--device duo|ipad] [--repo DIR]`
+  builds each commit's committed tree once (cached by commit and Xcode build in
+  `~/Library/Caches/SillAgents`, one shared DerivedData), boots one of them inside the heavy lock,
+  takes a photo per case (a name and launch arguments a line, `example.cases`), compares a baseline's
+  pixel for pixel (`pixeldiff.swift`: how many pixels, by how much, where; a picture of the
+  differences) and shuts it down. It refuses another name than "Sill agents …", any other booted
+  simulator, a case without `-SillLayout` or with `-SillLive` or anything that dials or sends input,
+  a Duo size or `-SillHinge` on the iPad, and building or a first boot under 25 GB free; it never
+  taps or types and needs no `no-device.sh` (no host, no encoder, stills only).
 
 ## Build and run
 
@@ -1089,13 +1129,21 @@ python3 Scripts/sillclient.py PORT 6 desktop --key=80,1.2@2   # ← held 1.2 s (
 python3 Scripts/sillclient.py PORT 8 none --gesture=swipeUp@3 --gesture=swipeDown@4   # a synthetic host logs "Gesture from …: swipe up → Mission Control (shortcut 108: key 160, fn) (not posted: a test host)"
 SILL_TEST_LOOPBACK=1 SILL_TEST_HOTKEYS='108=off,173=off' .build/release/SillHost --synthetic   # TEST ONLY: the gestures read this table (over macOS 27's own; `defaults` alone) instead of this Mac's shortcuts
 swift run -c release SillHost --no-clipboard  # share nothing of the clipboard with devices (on by default, as in Sill.app)
+swift run -c release SillHost --off-console-view   # show this account while another user is on the screen (off by default, as in Sill.app's Settings › Devices): docs/off-console-plan.md
 SILL_TEST_LOOPBACK=1 SILL_TEST_SOFTWARE_ENCODER=1 SILL_TEST_NO_ROUTER=1 SILL_TEST_PASTEBOARD=me.saffer.sill.test.x SILL_TEST_CLIPBOARD_LOG=1 .build/release/SillHost --synthetic   # the clipboard on a pasteboard of its own (never this Mac's), each decision printed with sizes
+SILL_TEST_DISPLAYS='Built-in Retina Display:1512x982@2:120:0,0;DELL U2723QE:2560x1440@1:60:1512,0' SILL_TEST_NO_SCREEN=1 SILL_TEST_LOOPBACK=1 SILL_TEST_SOFTWARE_ENCODER=1 SILL_TEST_NO_ROUTER=1 .build/release/SillHost --synthetic   # TEST ONLY: the Desktop's stops in place of this Mac's (DesktopDisplays): the test pattern at the shown stop's size with its number and name, kind 47 steps, nothing read, posted or warped
+python3 Scripts/sillclient.py PORT 10 desktop --fps=120 --next-display@3 --expect=desktopDisplay=2   # step to the next stop (kind 47, only to a --synthetic host on this Mac); each list prints desktopDisplays=, desktopDisplay= and names=
 SILL_TEST_NO_SCREEN=1 SILL_TEST_LOOPBACK=1 SILL_TEST_SOFTWARE_ENCODER=1 SILL_TEST_NO_ROUTER=1 .build/release/SillHost --synthetic   # TEST ONLY: ScreenCaptureKit never asked (no window list, no thumbnails), so a host an agent runs asks macOS for no screen recording
 SILL_TEST_FIREWALL=executable SILL_TEST_NO_SCREEN=1 SILL_TEST_LOOPBACK=1 SILL_TEST_SOFTWARE_ENCODER=1 SILL_TEST_NO_ROUTER=1 .build/release/SillHost --synthetic   # TEST ONLY: the macOS firewall's answers canned (executable|bundle|both|all|off|allowed|unreadable, or a file holding one, read at each check): "Firewall: the macOS firewall blocks Sill’s executable, …"
 /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate; …/socketfilterfw --listapps; …/socketfilterfw --getappblocked PATH   # the firewall, read-only as any user; never --unblockapp, --add, --remove or --set* (they change it, with sudo)
 python3 Scripts/sillclient.py PORT 6 none --clipboard --copy=hello@2 --expect=clipboard=none   # subscribe, send text as a device's Paste does; each kind 32 printed
 SILL_TOUCHRIG_SIM='Sill touchrig' Tests/touchrig/run.sh new && Tests/touchrig/run.sh --rev origin/main base && Tests/touchrig/compare.py .build/touchrig/base.log .build/touchrig/new.log   # the surfaces under synthesized touches
 Tests/checks/run-all.sh                 # every pure check, as CI runs them (~5 min; --mutants adds the mutants, well over an hour)
+Tests/checks/list.sh                    # every check and what it checks, from each folder's README.md (no table is kept by hand)
+Scripts/steps.sh new | list | find 349  # the step files (docs/steps): this branch's, the newest first, a pull request's
+python3 Scripts/migrate-notes.py        # once, in a branch opened before 2026-11-12, right after `git merge origin/main` stops
+Scripts/agent-simulators.sh create      # once: the agents' simulators "Sill agents Duo" (iOS 27.1) and "Sill agents iPad" (iOS 27.0), shut down
+Scripts/harness-photos.sh Scripts/harness-photos/example.cases --baseline origin/main   # harness photos of HEAD (committed) on the agents' Duo, pixel for pixel against main's, in the heavy lock
 Scripts/pacing/run.sh                   # remote pacing and the link's judge, this tree against origin/main, no encoder, all on loopback (~25 min; --full ~45; --list)
 SILL_TEST_LOOPBACK=1 SILL_TEST_SOFTWARE_ENCODER=1 SILL_TEST_NO_ROUTER=1 SILL_TEST_ORIGIN=vpn SILL_TEST_PATTERN=noise .build/release/SillHost --synthetic --remote   # an away session whose stream follows its quality
 Scripts/make-app.sh                     # .build/Sill.app, signed with the Apple Development identity (~2 s unchanged)
@@ -1183,9 +1231,11 @@ gives an address whose connections waited unadmitted or were refused, five failu
 a test client's `--pair-hold`s, refused handshakes or connections it keeps closing, from 127.0.0.1,
 meet it, "Home door backed off 127.0.0.1 for 300 s: …"), `SILL_TEST_ORIGIN=vpn|internet` (loopback
 counts as that origin),
-`SILL_TEST_REMOTE_ORIGIN=vpn|internet` (the same at the remote door alone, so
+`SILL_TEST_REMOTE_ORIGIN=vpn|internet|lan` (the same at the remote door alone, so
 one loopback host serves a device away and one at home: away from home's
-H8 and S4) and `SILL_TEST_NO_ROUTER=1` (never ask the router; set it on every
+H8 and S4; without it a loopback client at the remote door is a relay on this
+Mac, away from home (issue #326), and `lan` makes it this network, at home, "by
+address", as every loopback client there was before) and `SILL_TEST_NO_ROUTER=1` (never ask the router; set it on every
 headless host). Away from home and the link, headless (docs/remote-bundle-
 plan.md, PR B): `SILL_TEST_PATTERN=picture:<path>` gives a synthetic host a
 still picture for its Desktop (any image ImageIO reads, filling the frame:
@@ -1404,7 +1454,12 @@ first reads it and at each change), `-Sill.largerPicture 1` (its Larger Picture 
 in effect while a window streams, as the mock does but with `-SillActive desktop|none`;
 the console's `larger picture: …` line says what the rule made of it;
 `-SillVideoSize WxH` the mock's frame, `-SillLargerPictureToggle <s>[,<s>…]` the
-switch at those seconds), `-SillVoiceOver 1` (that group as with VoiceOver on:
+switch at those seconds), `-Sill.pictureInPicture 1` (its Picture in Picture on for one run, #291;
+`-SillPiPSupported 1|0` the switch shown or not whatever the simulator says, `-SillSettingsScroll pip`
+the panel at it; live, `-SillPiPStartAt <s>` starts it as iOS does as Sill leaves, `-SillPiPPauseAt
+<s>[,<s>…]` the window's pause and play, `-SillPiPLockAt <s>` the device's lock, `-SillPiPSession
+active|inactive` the audio session held or not; `xcrun simctl launch UDID com.apple.Preferences` sends
+Sill away, the console's `pip:` lines say what happened), `-SillVoiceOver 1` (that group as with VoiceOver on:
 its footnote says the rows do the gestures), `-SillScanOverlay 1` (Pair This
 iPad…'s overlay; `-SillOverlayLine asking|shown|openonmac|locked|noanswer` the
 line its ask's answer sets; under `-SillLive 1` it opens over the live session
@@ -1632,7 +1687,10 @@ device keeps working with Macs from the first public build on, or each says why
   another user, the login window or nobody is on its console, and `offConsole` true in that second case,
   both left out otherwise, so an unlocked list is what it was; a device that knows them says why the list
   is empty, and while locked a host sends no picture of the Mac (a placeholder frame at most), which also
-  replaces the last picture of a device from before them; the Mac's sound (kind 43, Audio.swift), once a public build ships it, a beta or not:
+  replaces the last picture of a device from before them, but off console with its user's switch on (Show this
+  account while another user is on the screen, docs/off-console-plan.md), when it streams this session's own desktop
+  and windows to every device and sends a device whose hello says `offConsoleView` 1 the list with its windows and
+  `offConsoleView` true (every other device the locked list: a later host keeps both keys' meanings); the Mac's sound (kind 43, Audio.swift), once a public build ships it, a beta or not:
   its two types (a JSON AudioFormat, then packets whose layout never changes: a new layout is a new
   type), AudioFormat's fields, the hello's `audio`, `sendAudio` and `audioNote`, kind 43 only to a
   device whose hello lists a codec the host makes, and the reader's caps, which a later host keeps

@@ -1,4 +1,10 @@
-# Viewer settings (offline)
+# `mac-viewer-settings`
+
+**Checks:** the Mac viewer's Settings: Swift 5 typechecking of the production settings source
+against the real host settings types with a compile-only client fixture, and structural checks of its
+panes, scope, privacy and the viewer-only reverse-scrolling toggle. Nothing is launched.
+
+**Compiles:** `MacClient/ViewerSettings.swift`, `iOSClient/HostSettingsLedger.swift` and `Sources/StreamProtocol/HostSettings.swift`
 
 Run `Tests/checks/mac-viewer-settings/run.sh` from any directory.
 

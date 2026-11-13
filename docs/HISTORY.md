@@ -7,6 +7,28 @@ comments that say "CLAUDE.md, Current step" or "the Current step" mean this file
 
 ## Current step
 
+### Merge of main (bf69067f, 0.6.2) into the viewer branch (2026-11-13)
+
+Sang asked to merge the latest main into `macos-viewer`: 247 commits, through 0.6.1's release, Picture in
+Picture (#291), the device's auto-lock (#230), full screen on iPad and main's move of its notes to
+`docs/steps/`.
+
+- Docs: Sang chose to keep this branch's trimmed CLAUDE.md, HISTORY.md and AGENT-REFERENCE.md over main's
+  layout. AGENT-REFERENCE.md's Layout, Build and run and Compatibility floor are main's (the branch had
+  not changed them since the trim); CLAUDE.md points to `docs/steps/` for main's log and takes main's
+  simulator rule; its short status section is named "Steps", as main's `repo-rules` check requires. Tests/checks/README.md is main's: each check describes itself in its folder's
+  README.md, so the viewer checks got one each (`Tests/checks/list.sh` lists them all). Do not run
+  `Scripts/migrate-notes.py` here: it expects the old CLAUDE.md and would read the trim as deletions.
+- Code: main's new calls from shared client code into iOS-only services compile on the Mac against
+  no-op stand-ins in `MacClient/MacOnlyShims.swift` (DeviceIdleTimer, PictureInPictureHub,
+  PictureInPicture), so later merges need no new guards for them. The Mac target also compiles the pure
+  `PictureInPicturePolicy.swift` and `DeviceIdlePolicy.swift`; the Mac display view's `setFrozen` does
+  nothing. The conflicts kept the Mac lifecycle (`ClientLifecycle`) beside main's Picture in Picture
+  logic in `StreamClient.swift`, `StreamClient+Clipboard.swift` and `AudioOutput.swift` (whose shared
+  session and Picture in Picture hold stay iOS-only).
+
+Verified: Sill Viewer (Debug, macOS) and Sill (Debug, iOS Simulator) build; `Tests/checks/run-all.sh`.
+
 ### Viewer floating window, full screen pointer lock and system gestures (2026-11-12 to 13)
 
 Sang asked for a session window like iPhone Mirroring's, with the title bar and controls

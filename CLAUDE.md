@@ -8,18 +8,25 @@ Formerly winstream; the folder still carries the old name.
 
 ## Where things are
 
-- `docs/HISTORY.md`: the work log, newest first. Every feature's decisions, what was
-  verified, and the "Untested, for Noah" lists. Read the entry for an area before you
-  change it. Add a new entry there, not here.
+- `docs/HISTORY.md`: this branch's work log, newest first, with the shared log up to
+  2026-11-03. Every feature's decisions, what was verified, and the "Untested" lists.
+  Read the entry for an area before you change it. Add a new entry there, not here.
+- `docs/steps/`: main's work log since it moved there (2026-11-12), one file per piece of
+  work (`Scripts/steps.sh list`, newest first). Work merged in from main is recorded
+  there, not in HISTORY.md. Main's references to `CLAUDE.md, "Steps"` mean this folder.
 - `docs/AGENT-REFERENCE.md`: the file map ("Layout"), every command, test hook and
   harness argument ("Build and run"), and the full compatibility floor.
 - `docs/DEVELOPMENT.md`: building, running and testing from source, for people.
 - `docs/*-plan.md`: one plan per feature, with its open questions and results.
 - `docs/release-checklist.md`: release, TestFlight, nightlies, secrets.
-- `Tests/checks/README.md`: what each pure check compiles.
+- `Tests/checks/README.md`: how to run the pure checks. Each check says what it checks and
+  compiles in its own folder's `README.md`; `Tests/checks/list.sh` prints them all.
 - `~/Downloads/sill-handoff/`: triage reports, release status and device-test evidence.
 
-## Current step
+## Steps
+
+This branch's notes go in `docs/HISTORY.md`, newest first; main's are in `docs/steps/`, one
+file per piece of work. Where things stand:
 
 **Native Mac viewer (branch `macos-viewer`, UNRELEASED source preview).** The
 integrated progress in `docs/macos-client-plan.md` is authoritative. Packaging
@@ -30,10 +37,9 @@ pairing persistence, control, input release, reconnect, Korean input, clipboard 
 sound. Still open: sleep/wake, VoiceOver, notarization, quarantine. Host/iOS shipped
 instructions and public download links are unchanged. Details: `docs/HISTORY.md`.
 
-**Release 0.6.0 (2026-11-02) is published. Still open:** App Store submission and
-Public Beta (Noah's clicks); right after App Review approves, merge PR #286 (main to
-0.6.1) before the next 09:17 UTC nightly; the Homebrew cask bump; #62. Details and
-the untested device lists: `docs/HISTORY.md`, and sill-handoff's `release-060/`.
+**Releases.** 0.6.1 is approved and released (2026-11-11); main carries 0.6.2 for both
+apps. Status and the untested device lists: `docs/steps/2026-11-11-release-0.6.1.md`,
+`docs/steps/2026-11-12-version-0-6-2.md`, and sill-handoff's release folders.
 
 ## Rules that bite
 
@@ -54,7 +60,10 @@ Machine and device safety:
 - Never test the update check against GitHub (`Scripts/sillfeed.py` serves a fake feed).
 - AWDL tests: test service types only, under 20 s. Never measure latency with a simulator
   on the connect screen (it turns the Mac's AWDL on).
-- Use private simulators of your own and delete them after. Others share the iPad Pro 13".
+- Simulators: harness photos on the agents' own pair only, through
+  `Scripts/harness-photos.sh`, which keeps the rules itself (one booted at a time, inside
+  the heavy lock, never one Noah made, nothing that reaches a Mac). No agent makes or
+  deletes a simulator of its own for photos (docs/steps/2026-11-12-tooling-speedup.md).
 - Release days: never dispatch the mutants matrix; dispatch a release's nightly after
   09:17 UTC, or cancel the scheduled duplicate.
 
