@@ -63,6 +63,15 @@ var releases = 0
 probe.close = { closes += 1 }
 probe.release = { releases += 1 }
 window.contentView!.addSubview(probe)
+/// Installs its toolbar when it moves to a titled frame, as SwiftUI's hosting view does.
+final class ToolbarHost: NSView {
+    let toolbar = NSToolbar(identifier: "chooser")
+    override func viewDidMoveToWindow() {
+        if let window, window.styleMask.contains(.titled) { window.toolbar = toolbar }
+    }
+}
+let toolbarHost = ToolbarHost()
+window.contentView!.addSubview(toolbarHost)
 check(state.window === window, "Observe only the attached window")
 check(window.delegate is ViewerFullScreenDelegate, "Install supported fullscreen delegate hook")
 check(window.delegate?.windowShouldClose?(window) == false && original.closeQueries == 1, "Forward SwiftUI close decisions")
@@ -181,6 +190,9 @@ probe.changeMode(false)
 check(!state.expanded, "The chooser forgets the frame")
 check(!window.titlebarAppearsTransparent && window.titleVisibility == .visible && !window.styleMask.contains(.fullSizeContentView), "The chooser is a standard window")
 check(window.styleMask.contains(.titled), "The chooser has its title bar back")
+check(window.toolbar === toolbarHost.toolbar && window.toolbar?.isVisible == true, "The chooser keeps the toolbar SwiftUI installs while the title bar comes back")
+let titleBar = window.contentView!.superview!.subviews.last!
+check(window.standardWindowButton(.closeButton)!.isDescendant(of: titleBar), "Nothing covers the chooser's title bar")
 check(window.isOpaque && window.backgroundColor != .clear, "The chooser is opaque")
 check(window.standardWindowButton(.closeButton)?.isHidden == false, "The chooser keeps its traffic lights")
 probe.removeFromSuperview()

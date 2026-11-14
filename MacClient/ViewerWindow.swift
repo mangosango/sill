@@ -243,6 +243,7 @@ struct ViewerWindowReader: NSViewRepresentable {
         /// The window shrinks back after the frame's hide animation.
         var collapseDelay: TimeInterval = 0.4
         private weak var installedWindow: NSWindow?
+        private var restyling = false
         private var fullScreenDelegate: ViewerFullScreenDelegate?
 
         private func restoreDelegate() {
@@ -322,13 +323,24 @@ struct ViewerWindowReader: NSViewRepresentable {
         /// A session is content first: the picture floats in a clear, borderless window, and the
         /// frame shows only on hover. Full screen and the chooser have the system's title bar.
         private func applyStyle() {
-            guard let window else { return }
+            // A style change moves this view to the window's new frame view, which calls here again.
+            guard let window, !restyling else { return }
+            restyling = true
+            defer { restyling = false }
             // AppKit keeps the content size across a style change; keep the frame instead.
             let frame = window.frame
             let floating = connected && !window.styleMask.contains(.fullScreen) && !ViewerFloatingWindow.holdsTitle(window)
             if floating { ViewerFloatingWindow.adopt(window) }
-            window.toolbar?.isVisible = !connected
+            // Adding the title bar rebuilds the window's frame. SwiftUI installs the chooser's toolbar
+            // on the way, then AppKit puts back the toolbar from before, which was none. Keep SwiftUI's.
+            var installed: NSToolbar?
+            let watch = window.observe(\.toolbar, options: .new) { _, change in
+                if let toolbar = change.newValue ?? nil { installed = toolbar }
+            }
             if floating { window.styleMask.remove(.titled) } else { window.styleMask.insert(.titled) }
+            watch.invalidate()
+            if window.toolbar == nil, let installed { window.toolbar = installed }
+            window.toolbar?.isVisible = !connected
             window.hasShadow = true
             window.isOpaque = !floating
             // Full screen letterboxes the picture in black, as the picture view does.

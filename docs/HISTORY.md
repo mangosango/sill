@@ -67,6 +67,11 @@ and persistent released-controls policy.
   never swapped: AppKit's title bar observes the window with KVO, and a swapped class
   crashed on its removal. Full screen gets the title bar back first and holds it until
   the transition ends.
+- Back to the chooser (2026-11-13): the title bar was missing after a session. A style
+  change moves the content into a new frame view, which ran `applyStyle` again in the
+  middle of the change; its background then covered the new title bar. `applyStyle` now
+  ignores that inner call. AppKit also puts back the toolbar from before the change (none),
+  over the one SwiftUI installs during it, so `applyStyle` keeps SwiftUI's.
 - Traffic lights: the system's own buttons (`standardWindowButton(_:for:)`) in a view that
   answers `_mouseInGroup:`, the undocumented hook a title bar uses to show their symbols.
   If a later macOS drops it, the buttons still work, without the hover symbols.

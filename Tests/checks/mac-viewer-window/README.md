@@ -4,7 +4,7 @@
 notices, the frame's show and hide policy, the borderless overrides (key status, Close asking SwiftUI first,
 Minimize, full screen getting its title bar back), growing and shrinking the window around the picture, the
 hover band where the title bar is or would be, the 3 s linger after a click, open menus holding the bar,
-the remote display's shape on resize, and the fullscreen delegate and lifecycle; with `--mutants`,
+the remote display's shape on resize, the chooser's title bar and toolbar after a session, and the fullscreen delegate and lifecycle; with `--mutants`,
 behavioral mutations it must kill. Not live appearance, fullscreen animation or VoiceOver.
 
 **Compiles:** `MacClient/ViewerWindow.swift`; `structural.py` reads `MacClient/SillViewerApp.swift` as source

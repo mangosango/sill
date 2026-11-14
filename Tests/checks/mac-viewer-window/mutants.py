@@ -37,6 +37,8 @@ mutations = [
     ('fullscreen-hides-lights', '!session || fullScreen || chrome', '!session || chrome'),
     ('session-opaque-titlebar', 'window.titlebarAppearsTransparent = connected', 'window.titlebarAppearsTransparent = false'),
     ('chooser-keeps-full-size', 'else { window.styleMask.remove(.fullSizeContentView) }', 'else { }'),
+    ('restyle-reentered', 'guard let window, !restyling else { return }', 'guard let window else { return }'),
+    ('chooser-loses-toolbar', '            if window.toolbar == nil, let installed { window.toolbar = installed }\n', ''),
     ('style-change-moves-frame', 'else { window.styleMask.remove(.fullSizeContentView) }\n            if window.frame != frame { window.setFrame(frame, display: true) }', 'else { window.styleMask.remove(.fullSizeContentView) }'),
     ('floating-keeps-title', 'if floating { window.styleMask.remove(.titled) } else { window.styleMask.insert(.titled) }', 'window.styleMask.insert(.titled)'),
     ('chooser-loses-title', 'if floating { window.styleMask.remove(.titled) } else { window.styleMask.insert(.titled) }', 'if floating { window.styleMask.remove(.titled) }'),
